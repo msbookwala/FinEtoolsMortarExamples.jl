@@ -48,6 +48,7 @@ alpha0, alpha1, alpha2, alpha3, beta0, beta1, beta2, beta3, gamma0, gamma1, gamm
 ux(x, y, z) = alpha0 + alpha1 * x + alpha2 * y + alpha3 * z
 uy(x, y, z) = beta0 + beta1 * x + beta2 * y + beta3 * z
 uz(x, y, z) = gamma0 + gamma1 * x + gamma2 * y + gamma3 * z
+exact_u(x) = [ux(x[1], x[2], x[3]), uy(x[1], x[2], x[3]), uz(x[1], x[2], x[3])]
 
 boundary_boxes = [[0.0, 1.0, 0.0, 0.0, 0.0, 1.0], #bottom
                   [0.0, 1.0, 1.0, 1.0, 0.0, 1.0], #top
@@ -276,7 +277,7 @@ for i in 1:8
     scattersysvec!(u_list[i], X[offset+1:offset+ndofs_j])
     global offset += ndofs_j
     
-    # err = L2_err3D(femm_list[i], geom_list[i], u_list[i], ux, uy, uz)
+    err = L2error(femm_list[i], geom_list[i], u_list[i], exact_u)
 
     fn = "$filename/mesh_$(i).vtk"
             vtkexportmesh(
@@ -284,7 +285,7 @@ for i in 1:8
                 fens_list[i],
                 fes_list[i];
                 scalars = [
-                    #  ("Err", err.values)
+                     ("Err", err.values)
                 ],
                 vectors = [ ("u", u_list[i].values)
                 ]

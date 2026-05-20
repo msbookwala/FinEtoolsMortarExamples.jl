@@ -7,9 +7,9 @@ using LinearAlgebra
 
 
 
-N_elem1 = 3*2
-N_elem2 = 3*2
-N_elem_i = 3*2
+N_elem1 = 5
+N_elem2 = 3
+N_elem_i = 3
 left_m = "t"
 right_m = "t"
 skew = 0.
@@ -113,8 +113,8 @@ numberdofs!(u_i)
 # D2, Pi_NC2, Pi_phi2, M_u2 = build_D_matrix(fens_i, fes_i, fens2, edge_fes2; lam_order=lam_order,tol=1e-8)
 
 
-@time D1, meta1 = common_refinement(fens1, edge_fes1, fens_i, fes_i; lam_order=lam_order, h=0.03)
-@time D2, meta2 = common_refinement(fens2, edge_fes2, fens_i, fes_i; lam_order=lam_order, h=0.033)
+D1, meta1 = common_refinement(fens1, edge_fes1, fens_i, fes_i; lam_order=lam_order, h=0.03)
+D2, meta2 = common_refinement(fens2, edge_fes2, fens_i, fes_i; lam_order=lam_order, h=0.033)
 
 # error()
 
@@ -134,12 +134,21 @@ sol(x) = x[1]-1
 err1 = L2error(femm1, geom1, T1, sol)
 err2 = L2error(femm2, geom2, T2, sol)
 
-File1 = "patch_test_left.vtk"
+filename = basename(@__FILE__)
+if !isdir(filename)
+    mkdir(filename)
+else
+    for file in readdir(filename)
+        rm(joinpath(filename, file))
+    end
+end
+
+File1 = "$filename/mesh_left.vtk"
 vtkexportmesh(
     File1,
     fens1, fes1,scalars = [("Temperature", T1.values), ("Err", err1.values)]
 )
-File2 = "patch_test_right.vtk"
+File2 = "$filename/mesh_right.vtk"
 vtkexportmesh(
     File2,
     fens2, fes2,scalars = [("Temperature", T2.values), ("Err", err2.values)]
@@ -149,15 +158,14 @@ u1_fens = meta1["fens_u"]
 u2_fens = meta2["fens_u"]
 u1_fes = meta1["fes_u"]
 u2_fes = meta2["fes_u"]
-file3 = "pt_union_left.vtk"
+file3 = "$filename/pt_union_left.vtk"
 vtkexportmesh(
     file3,
     u1_fens, u1_fes,scalars = []
 )
-file4 = "pt_union_right.vtk"
+file4 = "$filename/pt_union_right.vtk"
 vtkexportmesh(
     file4,
     u2_fens, u2_fes,scalars = []
 )
 println(u_i.values)
-

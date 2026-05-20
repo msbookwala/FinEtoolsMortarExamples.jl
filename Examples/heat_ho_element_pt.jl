@@ -5,16 +5,23 @@ using FinEtoolsHeatDiff.AlgoHeatDiffModule
 using FinEtools.MeshExportModule.VTK: vtkexportmesh, T3, vtkexportvectors
 using LinearAlgebra
 
+filename = basename(@__FILE__)
+if !isdir(filename)
+    mkdir(filename)
+else
+    for file in readdir(filename)
+        rm(joinpath(filename, file))
+    end
+end
 
-
-N_elem1 = 5*2
-N_elem2 = 3*2
-N_elem_i = 3*2
+N_elem1 = 5
+N_elem2 = 3
+N_elem_i = 3
 left_m = "t"
 right_m = "t"
 skew = 0.
 lam_order = 1
-bend=0
+bend=1
 kappa = [1.0 0.0 0.0; 0 1.0 0.0; 0.0 0.0 1.0] 
 material = MatHeatDiff(kappa)
 
@@ -47,7 +54,7 @@ K1 = conductivity(femm1, geom1, T1)
 K1_ff = matrix_blocked(K1, nfreedofs(T1), nfreedofs(T1))[:ff]
 
 l1 = selectelem(fens1, meshboundary(fes1), box = [0.0,0.0, 0.0,height1, 0.0, depth1], inflate=1e-8)
-el1femm = FEMMBase(IntegDomain(subset(meshboundary(fes1), l1), TriRule(3)))
+el1femm = FEMMBase(IntegDomain(subset(meshboundary(fes1), l1), TriRule(4)))
 fi1 = ForceIntensity(Float64[-1.0])
 F1 = distribloads(el1femm, geom1, T1, fi1, 2)
 F1_ff = vector_blocked(F1, nfreedofs(T1))[:f]
@@ -84,7 +91,7 @@ femm2 = FEMMHeatDiff(IntegDomain(fes2, Rule2), material)
 K2 = conductivity(femm2, geom2, T2)
 K2_ff = matrix_blocked(K2, nfreedofs(T2), nfreedofs(T2))[:ff]
 l2 = selectelem(fens2, meshboundary(fes2), box = [1.0,1.0, 0.0,height2, 0.0, depth2], inflate=1e-8)
-el2femm = FEMMBase(IntegDomain(subset(meshboundary(fes2), l2), TriRule(3)))
+el2femm = FEMMBase(IntegDomain(subset(meshboundary(fes2), l2), TriRule(4)))
 fi2 = ForceIntensity(Float64[1.0])
 F2 = distribloads(el2femm, geom2, T2, fi2, 2)
 F2_ff = vector_blocked(F2, nfreedofs(T2))[:f]
@@ -134,12 +141,12 @@ sol(x) = x[1]-1
 err1 = L2error(femm1, geom1, T1, sol)
 err2 = L2error(femm2, geom2, T2, sol)
 
-File1 = "patch_test_left.vtk"
+File1 = "$filename/mesh_left.vtk"
 vtkexportmesh(
     File1,
     fens1, fes1,scalars = [("Temperature", T1.values), ("Err", err1.values)]
 )
-File2 = "patch_test_right.vtk"
+File2 = "$filename/mesh_right.vtk"
 vtkexportmesh(
     File2,
     fens2, fes2,scalars = [("Temperature", T2.values), ("Err", err2.values)]
@@ -149,12 +156,12 @@ u1_fens = meta1["fens_u"]
 u2_fens = meta2["fens_u"]
 u1_fes = meta1["fes_u"]
 u2_fes = meta2["fes_u"]
-file3 = "pt_union_left.vtk"
+file3 = "$filename/pt_union_left.vtk"
 vtkexportmesh(
     file3,
     u1_fens, u1_fes,scalars = []
 )
-file4 = "pt_union_right.vtk"
+file4 = "$filename/pt_union_right.vtk"
 vtkexportmesh(
     file4,
     u2_fens, u2_fes,scalars = []

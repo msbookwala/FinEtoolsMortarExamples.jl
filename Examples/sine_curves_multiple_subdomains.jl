@@ -7,7 +7,7 @@ using FinEtools.AlgoBaseModule: matrix_blocked, vector_blocked
 using SparseArrays
 
 # check if folder exists
-filename = "curved_mult_sd"
+filename = basename(@__FILE__)
 if !isdir(filename)
     mkdir(filename)
 else
@@ -22,15 +22,8 @@ nu = 1/3
 MR = DeforModelRed3D
 material = MatDeforElastIso(MR, 0.0, E, nu, 0.0)
 
-N_elem1 = 5
-N_elem2 = 3
-N_elem_i = min(N_elem1, N_elem2)
-left_m = "t"
-right_m = "t"
-skew = 0.0
-lam_order = 1
 lam_orders = [1,1,1]
-bends = [0.1, 0.1, 0.1]
+bends = [0.1, 0.1, 0.1]*0
 function bend_map(xyz, bends)
     X0 = copy(xyz)   # important: always use original/reference coordinates
 

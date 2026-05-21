@@ -9,7 +9,7 @@ using SparseArrays
 N_elem1 = 5*3
 N_elem2 = 3*3
 N_elem_i = 3*3
-lam_order = 1
+lam_order = 0
 
 E = 1.0
 nu = 1/3

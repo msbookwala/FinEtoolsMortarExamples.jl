@@ -6,9 +6,9 @@ using LinearAlgebra
 using FinEtools.AlgoBaseModule: matrix_blocked, vector_blocked
 using SparseArrays
 
-N_elem1 = 5
-N_elem2 = 3*2
-N_elem_i = 3*2
+N_elem1 = 5*3
+N_elem2 = 3*3
+N_elem_i = 3*3
 lam_order = 1
 
 E = 1.0
@@ -32,31 +32,23 @@ function right_dbc_u(x)
 end
 
 # SD1 #########################################################################################################################
-r1 = 0.25
-l1 = 1.0
-fens1, fes1 = T4cylindern(r1, l1, N_elem1, N_elem1*2)
+r1 = 0.5
+l1 = 0.5
+fens1, fes1 = T4cylindern(0.25, l1, N_elem1, N_elem1)
 
-fens1.xyz[:, 1] .+= 0.5
-fens1.xyz[:, 2] .+= 0.5
+fens1.xyz[:, 1] .+= r1
+fens1.xyz[:, 2] .+= r1
 
 boundaryfes1 = meshboundary(fes1)
-interface_fes1 = subset(boundaryfes1, selectelem(fens1, boundaryfes1, box=[0.25 ,0.75, 0.25, 0.75, 0, l1], inflate=1e-8))
+interface_fes1 = subset(boundaryfes1, selectelem(fens1, boundaryfes1, box=[0.0 ,1.0, 0.0,1.0, l1, l1], inflate=1e-8))
 
 geom1 = NodalField(fens1.xyz)
 u1 = NodalField(zeros(size(fens1.xyz, 1), 3))
 
-dbc_nodes1a = selectnode(fens1, box=[0.0, 1.0, 0.0, 1.0, 0.0, 0.0], inflate=1e-8)
-setebc!(u1, dbc_nodes1a, 1, 0.0)
-setebc!(u1, dbc_nodes1a, 2, 0.0)
-setebc!(u1, dbc_nodes1a, 3, 0.0)
-
-dbc_nodes1b = selectnode(fens1, box=[0.0, 1.0, 0.0, 1.0, l1, l1], inflate=1e-8)
-for i in dbc_nodes1b
-    setebc!(u1, [i], 1, right_dbc_u(fens1.xyz[i, :])[1])
-    setebc!(u1, [i], 2, right_dbc_u(fens1.xyz[i, :])[2])
-    setebc!(u1, [i], 3, right_dbc_u(fens1.xyz[i, :])[3])
-end
-dbc_nodes1 = sort(union(dbc_nodes1a, dbc_nodes1b))
+dbc_nodes1 = selectnode(fens1, box=[0.0, 1.0, 0.0, 1.0, 0.0, 0.0], inflate=1e-8)
+setebc!(u1, dbc_nodes1, 1, 0.0)
+setebc!(u1, dbc_nodes1, 2, 0.0)
+setebc!(u1, dbc_nodes1, 3, 0.0)
 
 
 applyebc!(u1)
@@ -71,23 +63,22 @@ F1_ff = vector_blocked(F1, nfreedofs(u1))[:f] - K1_fd * gathersysvec(u1, :d)
 # SD2 #########################################################################################################################
 r2 = 0.25
 l2 = 0.5
-fens2_, fes2_ = Q4annulus(0.25, 0.5, N_elem2, N_elem2*3, 2*pi)
-
-fens2, fes2 = H8extrudeQ4(fens2_, fes2_, N_elem2, (x, k) -> [x[1], x[2], k * l2 / N_elem2])
-fens2, fes2 = mergenodes(fens2, fes2, 1e-8)
-fens2.xyz[:, 1] .+=0.5
-fens2.xyz[:, 2] .+= 0.5
-
+fens2, fes2 = T4cylindern(r2, l2, N_elem2, N_elem2*2)
+fens2.xyz[:, 1] .+= r1
+fens2.xyz[:, 2] .+= r1
+fens2.xyz[:, 3] .+= l1
 
 boundaryfes2 = meshboundary(fes2)
-interface_fes2 = subset(boundaryfes2, selectelem(fens2, boundaryfes2, box=[0.25, 0.75, 0.25, 0.75, 0, l1], inflate=1e-8))
+interface_fes2 = subset(boundaryfes2, selectelem(fens2, boundaryfes2, box=[0.0, 1.0, 0.0,1.0, l1, l1], inflate=1e-8))
 
 geom2 = NodalField(fens2.xyz)
 u2 = NodalField(zeros(size(fens2.xyz, 1), 3))
-dbc_nodes2 = selectnode(fens2, box=[0.0, 1.0, 0.0, 1.0, 0.0, 0.0], inflate=1e-8)
-setebc!(u2, dbc_nodes2, 1, 0.0)
-setebc!(u2, dbc_nodes2, 2, 0.0)
-setebc!(u2, dbc_nodes2, 3, 0.0)
+dbc_nodes2 = selectnode(fens2, box=[0.0, 1.0, 0.0, 1.0, 1.0, 1.0], inflate=1e-8)
+for i in dbc_nodes2
+    setebc!(u2, [i], 1, right_dbc_u(fens2.xyz[i, :])[1])
+    setebc!(u2, [i], 2, right_dbc_u(fens2.xyz[i, :])[2])
+    setebc!(u2, [i], 3, right_dbc_u(fens2.xyz[i, :])[3])
+end
 
 applyebc!(u2)
 numberdofs!(u2)
@@ -136,7 +127,7 @@ scattersysvec!(u1, X[1:size(K1_ff,1)])
 scattersysvec!(u2, X[size(K1_ff,1)+1 : size(K1_ff,1)+size(K2_ff,1)])
 scattersysvec!(u_i, X[size(K1_ff,1)+size(K2_ff,1)+1 : end])
 
-# # export results
+# export results
 err1 = L2error(femm1, geom1, u1, exact_u)
 err2 = L2error(femm2, geom2, u2, exact_u)
 filename = basename(@__FILE__)
@@ -151,7 +142,7 @@ File1 = "$filename/mesh_left.vtk"
 vtkexportmesh(
     File1,
     fens1, fes1,
-    # calars = [ ("Err", err1.values)],
+    # scalars = [ ("Err", err1.values)],
      vectors = [("Displacement", u1.values)]
 )
 File2 = "$filename/mesh_right.vtk"
@@ -168,13 +159,13 @@ vtkexportmesh(
     vectors = [("LagrangeMultiplier", u_i.values)]
 )
 
-# Fileu1 = "$filename/union_left.vtk"
-# vtkexportmesh(
-#     Fileu1,
-#     meta1["fens_u"], meta1["fes_u"],scalars = []
-# )
-# Fileu2 = "$filename/union_right.vtk"
-# vtkexportmesh(
-#     Fileu2,
-#     meta2["fens_u"], meta2["fes_u"],scalars = []
-# )
+Fileu1 = "$filename/union_left.vtk"
+vtkexportmesh(
+    Fileu1,
+    meta1["fens_u"], meta1["fes_u"],scalars = []
+)
+Fileu2 = "$filename/union_right.vtk"
+vtkexportmesh(
+    Fileu2,
+    meta2["fens_u"], meta2["fes_u"],scalars = []
+)

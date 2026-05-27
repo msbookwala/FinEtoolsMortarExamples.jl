@@ -6,9 +6,9 @@ using LinearAlgebra
 using FinEtools.AlgoBaseModule: matrix_blocked, vector_blocked
 using SparseArrays
 
-N_elem1 = 5*3
-N_elem2 = 3*3
-N_elem_i = 3*3
+N_elem1 = 5*2
+N_elem2 = 3*2
+N_elem_i = 3*2
 lam_order = 0
 
 E = 1.0

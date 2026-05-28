@@ -6,9 +6,9 @@ using LinearAlgebra
 using FinEtools.AlgoBaseModule: matrix_blocked, vector_blocked
 using SparseArrays
 
-N_elem1 = 1
+N_elem1 = 2
 N_elem2 = 4
-N_elem3 = 4
+N_elem3 = 3
 N_elem_i = 3
 lam_order = 1
 depth = 0.3
@@ -203,6 +203,12 @@ x = A\F
 scattersysvec!(u1, x[1:nfreedofs(u1)])
 scattersysvec!(u2, x[nfreedofs(u1)+1:nfreedofs(u1)+nfreedofs(u2)])
 scattersysvec!(u3, x[nfreedofs(u1)+nfreedofs(u2)+1:nfreedofs(u1)+nfreedofs(u2)+nfreedofs(u3)])
+# st1 = fieldfromintegpoints(femm1, geom1, u1,:Cauchy, 1)
+# st2 = fieldfromintegpoints(femm2, geom2, u2,:Cauchy, 1)
+# st3 = fieldfromintegpoints(femm3, geom3, u3,:Cauchy, 1)
+st1 = elemfieldfromintegpoints(femm1, geom1, u1,:Cauchy, 1)
+st2 = elemfieldfromintegpoints(femm2, geom2, u2,:Cauchy, 1)
+st3 = elemfieldfromintegpoints(femm3, geom3, u3,:Cauchy, 1)
 
 # output #########################################################################################
 filename = basename(@__FILE__)
@@ -218,21 +224,21 @@ file_left = "$filename/left.vtk"
 vtkexportmesh(
     file_left,
     fens1, fes1,
-    # scalars = [ ("Err", err1.values)],
+    scalars = [ ("St", st1.values)],
      vectors = [("Displacement", u1.values)]
 )
 file_right = "$filename/right.vtk"
 vtkexportmesh(
     file_right,
     fens3, fes3,
-    # scalars = [ ("Err", err1.values)],
+    scalars = [ ("St", st3.values)],
      vectors = [("Displacement", u3.values)]
 )
 file_center = "$filename/center.vtk"
 vtkexportmesh(
     file_center,
     fens2, fes2,
-    # scalars = [ ("Err", err1.values)],
+    scalars = [ ("St", st2.values)],
      vectors = [("Displacement", u2.values)]
 )
 file_li = "$filename/left_interface.vtk"

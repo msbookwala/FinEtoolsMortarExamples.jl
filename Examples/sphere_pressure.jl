@@ -6,7 +6,7 @@ using LinearAlgebra
 using FinEtools.AlgoBaseModule: matrix_blocked, vector_blocked
 using SparseArrays
 
-multfactor = 8
+multfactor = 4
 N_elem1 = 2*multfactor
 N_elem2 = 3*multfactor
 N_elem_i = 2*multfactor
@@ -296,10 +296,10 @@ end
 fn1 = "$filename/inner.vtk"
 fn2 = "$filename/outer.vtk"
 fn3 = "$filename/skeleton.vtk"
-vtkexportmesh(fn1, fens1, fes1, vectors = [("Disp", u1.values)], scalars = [("Cauchy", st1.values), 
+vtkexportmesh(fn1, fens1, fes1, vectors = [("Disp", u1.values)], scalars = [#("Cauchy", st1.values), 
                                                                         ("Pressure", p1.values), 
                                                                         ("p_error", p1error.values)])
-vtkexportmesh(fn2, fens2, fes2, vectors = [("Disp", u2.values)], scalars = [("Cauchy", st2.values), 
+vtkexportmesh(fn2, fens2, fes2, vectors = [("Disp", u2.values)], scalars = [#("Cauchy", st2.values), 
                                                                         ("Pressure", p2.values), 
                                                                         ("p_error", p2error.values)])
 vtkexportmesh(fn3, fensi, fesi)

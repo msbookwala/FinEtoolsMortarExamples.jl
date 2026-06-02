@@ -6,14 +6,18 @@ using LinearAlgebra
 using FinEtools.AlgoBaseModule: matrix_blocked, vector_blocked
 using SparseArrays
 
-N_elem1 = 5
-N_elem2 = 6
-N_elem_i = 6
+multfactor = 8
+N_elem1 = 2*multfactor
+N_elem2 = 3*multfactor
+N_elem_i = 2*multfactor
 lam_order = 1
+
+
 
 ri = 1.0
 rmid = 2.0
 ro = 3.0
+p=1
 
 E = 1.0
 nu = 1/3
@@ -21,8 +25,16 @@ MR = DeforModelRed3D
 material = MatDeforElastIso(MR, 0.0, E, nu, 0.0)
 trule3d = TetRule(4)
 trule2d = TriRule(3)
-grule3d = GaussRule(3, 4)
+grule3d = GaussRule(3, 3)
 grule2d = GaussRule(2, 3)
+
+p_exact = function (x)
+    return -ri^3 / (ro^3-ri^3) *p
+end
+u_exact = function (x)
+    r = norm(x.-ro)
+    return ri^3 / (ro^3-ri^3) * ((1-2*nu)*r+ (1+nu)*ro^3 / 2/r^2)*p/E
+end
 
 function Q4sphere(radius::T, nperradius::IT;
                   tolerance = 1.0e-8 * radius) where {T<:Number, IT<:Integer}
@@ -134,8 +146,8 @@ end
 
 
 
-fens1, fes1 = H8hollowsphere(ri, rmid, N_elem1, 4)
-fens2, fes2 = H8hollowsphere(rmid, ro, N_elem2, 4)
+fens1, fes1 = H8hollowsphere(ri, rmid, N_elem1, ceil(Int, N_elem1/2))
+fens2, fes2 = H8hollowsphere(rmid, ro, N_elem2, ceil(Int, N_elem2/2))
 rule = grule3d
 rule2d = grule2d
 
@@ -207,7 +219,8 @@ K2_fd = matrix_blocked(K2, nfreedofs(u2), nfreedofs(u2))[:fd]
 # pressure on the inner surface of inner sphere
 pfemm = FEMMBase(IntegDomain(fe1inner, rule2d))
 function pfun_r(forceout::Vector{T}, XYZ, tangents, feid, qpid) where {T}
-    return [XYZ[1]-ro, XYZ[2]-ro, XYZ[3]-ro]
+    x = [XYZ[1]-ro, XYZ[2]-ro, XYZ[3]-ro]
+    return x * p/ norm(x) 
 end
 
 fi_p = ForceIntensity(Float64, 3, pfun_r)
@@ -218,8 +231,8 @@ F2_ff = zeros(nfreedofs(u2))
 
 
 
-D1, meta1 = common_refinement(fens1, fe1outer, fensi, fesi; lam_order, tri_order = 2, h =0.1, dim_u=3)
-D2, meta2 = common_refinement(fens2, fe2inner, fensi, fesi; lam_order, tri_order = 2, h =0.1, dim_u=3)
+D1, meta1 = common_refinement(fens1, fe1outer, fensi, fesi; lam_order, tri_order = 2, h =0.05, dim_u=3)
+D2, meta2 = common_refinement(fens2, fe2inner, fensi, fesi; lam_order, tri_order = 2, h =0.05, dim_u=3)
 
 dbc_dofs = sort([
     3*dbc_node1 .- 2;  # ux
@@ -245,8 +258,8 @@ X = A \ B
 scattersysvec!(u1, X[1:size(K1_ff,1)])
 scattersysvec!(u2, X[size(K1_ff,1)+1 : size(K1_ff,1)+size(K2_ff,1)])
 # scattersysvec!(u_i, X[size(K1_ff,1)+size(K2_ff,1)+1 : end])
-# st1 = elemfieldfromintegpoints(femm1, geom1, u1,:Cauchy, 1:6)
-# st2 = elemfieldfromintegpoints(femm2, geom2, u2,:Cauchy, 1:6)
+st1 = elemfieldfromintegpoints(femm1, geom1, u1,:Cauchy, 1:6)
+st2 = elemfieldfromintegpoints(femm2, geom2, u2,:Cauchy, 1:6)
 # hss1 = ElementalField(sum(st1.values[:,1:3], dims=2) ./ 3)
 # hss2 = ElementalField(sum(st2.values[:,1:3], dims=2) ./ 3)
 
@@ -255,8 +268,17 @@ scattersysvec!(u2, X[size(K1_ff,1)+1 : size(K1_ff,1)+size(K2_ff,1)])
 # hss1 = NodalField(sum(st1.values[:,1:3], dims=2) ./ 3)
 # hss2 = NodalField(sum(st2.values[:,1:3], dims=2) ./ 3)
 
-st1 = elemfieldfromintegpoints(femm1, geom1, u1,:Pressure, 1)
-st2 = elemfieldfromintegpoints(femm2, geom2, u2,:Pressure, 1)
+
+
+# p1 = fieldfromintegpoints(femm1, geom1, u1,:Pressure, 1)
+# p2 = fieldfromintegpoints(femm2, geom2, u2,:Pressure, 1)
+p1 = elemfieldfromintegpoints(femm1, geom1, u1,:Pressure, 1)
+p2 = elemfieldfromintegpoints(femm2, geom2, u2,:Pressure, 1)
+
+p1error = L2error(femm1, geom1, p1, p_exact)
+p2error = L2error(femm2, geom2, p2, p_exact)
+
+
 
 # ###################################################################
 # Export meshes for visualization
@@ -273,8 +295,12 @@ end
 fn1 = "$filename/inner.vtk"
 fn2 = "$filename/outer.vtk"
 fn3 = "$filename/skeleton.vtk"
-vtkexportmesh(fn1, fens1, fes1, vectors = [("Disp", u1.values)], scalars = [("Cauchy", st1.values), ("HSS", hss1.values)])
-vtkexportmesh(fn2, fens2, fes2, vectors = [("Disp", u2.values)], scalars = [("Cauchy", st2.values), ("HSS", hss2.values)])
+vtkexportmesh(fn1, fens1, fes1, vectors = [("Disp", u1.values)], scalars = [("Cauchy", st1.values), 
+                                                                        ("Pressure", p1.values), 
+                                                                        ("p_error", p1error.values)])
+vtkexportmesh(fn2, fens2, fes2, vectors = [("Disp", u2.values)], scalars = [("Cauchy", st2.values), 
+                                                                        ("Pressure", p2.values), 
+                                                                        ("p_error", p2error.values)])
 vtkexportmesh(fn3, fensi, fesi)
 
 ufn1 = "$filename/inner_u.vtk"
@@ -286,3 +312,10 @@ f1 = "$filename/inner_f.vtk"
 f2 = "$filename/outer_f.vtk"
 vtkexportmesh(f1, fens1, fe1outer)
 vtkexportmesh(f2, fens2, fe2inner)
+
+p_l2error1 = sqrt(sum(p1error.values.^2))
+p_l2error2 = sqrt(sum(p2error.values.^2))
+total_l2error = sqrt(p_l2error1^2 + p_l2error2^2)
+println("L2 error in pressure, inner sphere: $p_l2error1")
+println("L2 error in pressure, outer sphere: $p_l2error2")
+println("Total L2 error in pressure: $total_l2error")

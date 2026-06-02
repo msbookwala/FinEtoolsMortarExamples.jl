@@ -229,10 +229,11 @@ Fp = distribloads(pfemm,geom1, u1, fi_p,2)
 F1_ff = vector_blocked(Fp, nfreedofs(u1))[:f]
 F2_ff = zeros(nfreedofs(u2))
 
-
+println("Assembling system...")
 
 D1, meta1 = common_refinement(fens1, fe1outer, fensi, fesi; lam_order, tri_order = 2, h =0.05, dim_u=3)
 D2, meta2 = common_refinement(fens2, fe2inner, fensi, fesi; lam_order, tri_order = 2, h =0.05, dim_u=3)
+println("Solving now")
 
 dbc_dofs = sort([
     3*dbc_node1 .- 2;  # ux
@@ -254,7 +255,7 @@ A = [K1_ff          spzeros(size(K1_ff,1), size(K2_ff,2))    D1';
      D1               -D2               spzeros(size(D1,1), size(D1,1))]
 B = vcat(F1_ff, F2_ff, zeros(size(D1, 1)))
 X = A \ B
-
+println("Done solving")
 scattersysvec!(u1, X[1:size(K1_ff,1)])
 scattersysvec!(u2, X[size(K1_ff,1)+1 : size(K1_ff,1)+size(K2_ff,1)])
 # scattersysvec!(u_i, X[size(K1_ff,1)+size(K2_ff,1)+1 : end])

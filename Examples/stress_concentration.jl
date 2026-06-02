@@ -7,7 +7,7 @@ using FinEtools.AlgoBaseModule: matrix_blocked, vector_blocked
 using SparseArrays
 
 N_elem1 = 2
-N_elem2 = 4
+N_elem2 = 6
 N_elem3 = 3
 N_elem_i = 3
 lam_order = 1

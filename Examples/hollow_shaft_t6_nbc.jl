@@ -5,10 +5,11 @@ using FinEtools.MeshExportModule
 using LinearAlgebra
 using FinEtools.AlgoBaseModule: matrix_blocked, vector_blocked
 using SparseArrays
+include("NS_solver.jl")
 
-N_elem1 = 4
-N_elem2 = 3*2
-N_elem_i = 3
+N_elem1 = 4*2
+N_elem2 = 3*2*2
+N_elem_i = 3*2
 lam_order = 0
 
 E = 1000.0
@@ -98,7 +99,7 @@ fens2.xyz[:, 2] .+= 0.5
 
 
 boundaryfes2 = meshboundary(fes2)
-interface_fes2 = subset(boundaryfes2, selectelem(fens2, boundaryfes2, box=[0.25, 0.75, 0.25, 0.75, 0, l1], inflate=1e-8))
+interface_fes2 = subset(boundaryfes2, selectelem(fens2, boundaryfes2, box=[0.25, 0.75, 0.25, 0.75, 0.0, l1], inflate=1e-8))
 
 geom2 = NodalField(fens2.xyz)
 u2 = NodalField(zeros(size(fens2.xyz, 1), 3))
@@ -123,6 +124,9 @@ F2_ff = vector_blocked(F2, nfreedofs(u2))[:f] - K2_fd * gathersysvec(u2, :d)
 # fens_i.xyz[:, 2] .+= r1
 # # append z coordinate column
 # fens_i.xyz = hcat(fens_i.xyz, l1*ones(size(fens_i.xyz, 1)))
+
+
+
 fes_i = deepcopy(interface_fes2)
 fens_i = deepcopy(fens2)
 connected = findunconnnodes(fens_i, fes_i)
@@ -145,12 +149,12 @@ D2, meta2 = common_refinement(fens2, interface_fes2, fens_i, fes_i; lam_order=la
 f_lams = -D1[:, dbc_dofs1] * gathersysvec(u1, :d)
 D1 = D1[:, setdiff(1:count(fens1)*3, dbc_dofs1)]
 # D2 = D2[:, setdiff(1:count(fens2)*3, dbc_dofs2)]
+
 A = [K1_ff          spzeros(size(K1_ff,1), size(K2_ff,2))    D1';
      spzeros(size(K2_ff,1), size(K1_ff,2))     K2_ff          -D2';
      D1               -D2               spzeros(size(D1,1), size(D1,1))]
 B = vcat(F1_ff, F2_ff, f_lams)
-X = A \ B
-
+# X = A \ B
 scattersysvec!(u1, X[1:size(K1_ff,1)])
 scattersysvec!(u2, X[size(K1_ff,1)+1 : size(K1_ff,1)+size(K2_ff,1)])
 scattersysvec!(u_i, X[size(K1_ff,1)+size(K2_ff,1)+1 : end])

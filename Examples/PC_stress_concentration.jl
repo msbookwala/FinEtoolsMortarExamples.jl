@@ -6,7 +6,129 @@ using LinearAlgebra
 using FinEtools.AlgoBaseModule: matrix_blocked, vector_blocked
 using SparseArrays
 using Krylov
+using LinearAlgebra
+using SparseArrays
+using Krylov
+using AlgebraicMultigrid
+using KrylovPreconditioners
+using LinearAlgebra
+using SparseArrays
+using Base.Threads
+struct MortarSaddleOp{TK,TD,TW}
+    Ks::TK
+    D::TD
+    ranges::Vector{UnitRange{Int}}
+    work::TW
+    n::Int
+end
 
+Base.size(A::MortarSaddleOp) = (A.n, A.n)
+Base.eltype(::MortarSaddleOp) = Float64
+
+function MortarSaddleOp(Ks::Vector, D)
+    nK = sum(size(Ki, 1) for Ki in Ks)
+    nλ = size(D, 1)
+
+    ranges = UnitRange{Int}[]
+    first = 1
+    for Ki in Ks
+        last = first + size(Ki, 1) - 1
+        push!(ranges, first:last)
+        first = last + 1
+    end
+
+    work = [zeros(nK) for _ in 1:nthreads()]
+
+    return MortarSaddleOp(Ks, D, ranges, work, nK + nλ)
+end
+
+function LinearAlgebra.mul!(y::Vector{Float64},
+                            A::MortarSaddleOp,
+                            x::Vector{Float64})
+    nK = size(A.D, 2)
+    nλ = size(A.D, 1)
+
+    xu = @view x[1:nK]
+    xλ = @view x[nK+1:nK+nλ]
+
+    yu = @view y[1:nK]
+    yλ = @view y[nK+1:nK+nλ]
+
+    fill!(y, 0.0)
+
+    # Thread the three independent subdomain stiffness products.
+    @threads for i in eachindex(A.Ks)
+        r = A.ranges[i]
+        mul!(@view(yu[r]), A.Ks[i], @view(xu[r]))
+    end
+
+    # Constraint terms.
+    # These two are usually cheaper than K*u.
+    # Keep them ordinary first; only optimize if profiler says D dominates.
+    mul!(yλ, A.D, xu)
+    mul!(yu, transpose(A.D), xλ, 1.0, 1.0)
+
+    return y
+end
+
+function (A::MortarSaddleOp)(x::Vector{Float64})
+    y = similar(x)
+    mul!(y, A, x)
+    return y
+end
+struct MortarDiagSchurPrec{Tv,TF}
+    invdiagK::Tv
+    factS::TF
+    nK::Int
+    nλ::Int
+end
+
+Base.size(P::MortarDiagSchurPrec) = (P.nK + P.nλ, P.nK + P.nλ)
+Base.eltype(::MortarDiagSchurPrec) = Float64
+
+function LinearAlgebra.mul!(y::Vector{Float64},
+                            P::MortarDiagSchurPrec,
+                            x::Vector{Float64})
+    nK = P.nK
+    @views y[1:nK] .= P.invdiagK .* x[1:nK]
+    @views y[nK+1:end] .= P.factS \ x[nK+1:end]
+    return y
+end
+
+function make_diag_schur_prec(K, D; shift_factor = 1e-10)
+    nK = size(K, 1)
+    nλ = size(D, 1)
+
+    dK = diag(K)
+
+    if any(!isfinite, dK)
+        error("diag(K) contains NaN or Inf.")
+    end
+
+    if minimum(abs.(dK)) == 0.0
+        error("diag(K) has zero entries; diagonal K preconditioner is invalid.")
+    end
+
+    invdiagK = 1.0 ./ dK
+
+    # Approximate Schur complement:
+    # S ≈ D * diag(K)^(-1) * D'
+    S = D * spdiagm(0 => invdiagK) * D'
+    S = sparse(Symmetric(S))
+
+    # Small regularization only for numerical factorization.
+    # If this is large, your D probably has rank problems.
+    α = shift_factor * max(1.0, maximum(abs.(diag(S))))
+    Sreg = S + α * sparse(I, nλ, nλ)
+
+    factS = cholesky(Symmetric(Sreg); check = false)
+
+    if !issuccess(factS)
+        error("Schur approximation is not SPD. Check rank(D), duplicate LM rows, or increase shift_factor.")
+    end
+
+    return MortarDiagSchurPrec(invdiagK, factS, nK, nλ)
+end
 
 function run_stress_concentration(r, m=2)
     println("Running with r = $r")
@@ -205,18 +327,46 @@ function run_stress_concentration(r, m=2)
     K = blockdiag(K1_ff, K2_ff, K3_ff) 
     b = vec([F1_ff; F2; F3_ff; zeros(size(D, 1), 1)])
     A = [K D'; 
-            D 0*sparse(I, size(D, 1), size(D, 1))]
+            D spzeros(size(D, 1), size(D, 1))]
+    
+    # PCM = [spdiagm(1.0 ./ diag(K)) spzeros(size(D, 2), size(D, 1));
+    #         spzeros(size(D, 1), size(K, 1)) inv(D*spdiagm(1.0 ./ diag(K))*D')]
 
-    bb = vec([F1_ff; F2; F3_ff;])
-    bc = zeros(size(D, 1), 1)
+
     # print(size(A))
     # print(rank(A))
-    #  x = A\b
+    # @time x = A\b
 
-    @time x,_ = krylov_solve(Val(:minres),A,b, rtol=1e-8)
-    # @time x,y,_ = tricg(A,bb,bc)
-    # return 0
+    # @time x,_ = krylov_solve(Val(:minres),A,b, M=PCM)
+    PCM = make_diag_schur_prec(K, D)
+    # P  = aspreconditioner(ruge_stuben(A))
+    # P = BlockJacobiPreconditioner(A)
 
+    # @time x, stats = krylov_solve(
+    #     Val(:minres),
+    #     A,
+    #     b;
+    #     M=P,
+    #     atol = 1e-10,
+    #     rtol = 1e-8,
+    #     itmax = 2000,
+    #     verbose = 1
+    # )
+
+
+    Ks = [K1_ff, K2_ff, K3_ff]
+Aop = MortarSaddleOp(Ks, D)
+
+@time x, stats = krylov_solve(
+    Val(:minres),
+    Aop,
+    b;
+    M = PCM,
+    atol = 1e-10,
+    rtol = 1e-8,
+    itmax = 2000,
+    verbose = 1
+)
     scattersysvec!(u1, x[1:nfreedofs(u1)])
     scattersysvec!(u2, x[nfreedofs(u1)+1:nfreedofs(u1)+nfreedofs(u2)])
     scattersysvec!(u3, x[nfreedofs(u1)+nfreedofs(u2)+1:nfreedofs(u1)+nfreedofs(u2)+nfreedofs(u3)])
@@ -230,55 +380,55 @@ function run_stress_concentration(r, m=2)
     println("max stress = ", maximum(st2.values))
 
     # output #########################################################################################
-    filename = basename(@__FILE__)
+    # filename = basename(@__FILE__)
 
-    # if !isdir(filename)
-    #     mkdir(filename)
-    # else
-    #     for file in readdir(filename)
-    #         rmr(joinpath(filename, file))
+    # # if !isdir(filename)
+    # #     mkdir(filename)
+    # # else
+    # #     for file in readdir(filename)
+    # #         rmr(joinpath(filename, file))
+    # #     end
+    # # end
+    # if isdir("$filename/r$r")
+    #     for file in readdir("$filename/r$r")
+    #         rm(joinpath("$filename/r$r", file))
     #     end
+    # else
+    #     mkdir("$filename/r$r")
     # end
-    if isdir("$filename/r$r")
-        for file in readdir("$filename/r$r")
-            rm(joinpath("$filename/r$r", file))
-        end
-    else
-        mkdir("$filename/r$r")
-    end
 
-    file_left = "$filename/r$r/left.vtk"
-    vtkexportmesh(
-        file_left,
-        fens1, fes1,
-        scalars = [ ("St", st1.values)],
-        vectors = [("Displacement", u1.values)]
-    )
-    file_right = "$filename/r$r/right.vtk"
-    vtkexportmesh(
-        file_right,
-        fens3, fes3,
-        scalars = [ ("St", st3.values)],
-        vectors = [("Displacement", u3.values)]
-    )
-    file_center = "$filename/r$r/center.vtk"
-    vtkexportmesh(
-        file_center,
-        fens2, fes2,
-        scalars = [ ("St", st2.values)],
-        vectors = [("Displacement", u2.values)]
-    )
-    file_li = "$filename/r$r/left_interface.vtk"
-    vtkexportmesh(
-        file_li,
-        fensi1, fesi1
-    )
-    file_ri = "$filename/r$r/right_interface.vtk"
-    vtkexportmesh(
-        file_ri,
-        fensi2, fesi2
-    )
-    return maximum(st2.values)
+    # file_left = "$filename/r$r/left.vtk"
+    # vtkexportmesh(
+    #     file_left,
+    #     fens1, fes1,
+    #     scalars = [ ("St", st1.values)],
+    #     vectors = [("Displacement", u1.values)]
+    # )
+    # file_right = "$filename/r$r/right.vtk"
+    # vtkexportmesh(
+    #     file_right,
+    #     fens3, fes3,
+    #     scalars = [ ("St", st3.values)],
+    #     vectors = [("Displacement", u3.values)]
+    # )
+    # file_center = "$filename/r$r/center.vtk"
+    # vtkexportmesh(
+    #     file_center,
+    #     fens2, fes2,
+    #     scalars = [ ("St", st2.values)],
+    #     vectors = [("Displacement", u2.values)]
+    # )
+    # file_li = "$filename/r$r/left_interface.vtk"
+    # vtkexportmesh(
+    #     file_li,
+    #     fensi1, fesi1
+    # )
+    # file_ri = "$filename/r$r/right_interface.vtk"
+    # vtkexportmesh(
+    #     file_ri,
+    #     fensi2, fesi2
+    # )
+    # return maximum(st2.values)
 
     # file_11 = "$filename/union_11.vtk"
     # vtkexportmesh(
@@ -303,7 +453,7 @@ function run_stress_concentration(r, m=2)
 
 end
 s = []
-for r in 2:2
+for r in 3:3
     max_stress = run_stress_concentration(r,2)
     push!(s, max_stress)
 end

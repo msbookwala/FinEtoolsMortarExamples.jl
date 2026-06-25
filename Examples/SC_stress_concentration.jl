@@ -7,8 +7,79 @@ using FinEtools.AlgoBaseModule: matrix_blocked, vector_blocked
 using SparseArrays
 using Krylov
 
+function elasticity_rbm_3d(xyz::Matrix{Float64})
+    nnode = size(xyz, 1)
+    ndof = 3 * nnode
 
-function run_stress_concentration(r, m=2)
+    xc = vec(sum(xyz, dims=1)) ./ nnode
+
+    R = zeros(ndof, 6)
+
+    for a in 1:nnode
+        x = xyz[a, 1] - xc[1]
+        y = xyz[a, 2] - xc[2]
+        z = xyz[a, 3] - xc[3]
+
+        ix = 3a - 2
+        iy = 3a - 1
+        iz = 3a
+
+        # translations
+        R[ix, 1] = 1.0
+        R[iy, 2] = 1.0
+        R[iz, 3] = 1.0
+
+        # rotation about x-axis: omega = (1,0,0), u = omega x r
+        R[iy, 4] = -z
+        R[iz, 4] =  y
+
+        # rotation about y-axis: omega = (0,1,0)
+        R[ix, 5] =  z
+        R[iz, 5] = -x
+
+        # rotation about z-axis: omega = (0,0,1)
+        R[ix, 6] = -y
+        R[iy, 6] =  x
+    end
+
+    return R
+end
+
+function independent_columns(R; tol=1e-10)
+    F = qr(R, ColumnNorm())
+    r = sum(abs.(diag(F.R)) .> tol * maximum(abs.(diag(F.R))))
+    return Matrix(R[:, F.p[1:r]])
+end
+
+function make_floating_solver(K::SparseMatrixCSC, R::Matrix{Float64})
+    n = size(K, 1)
+    m = size(R, 2)
+
+    if m == 0
+        F = cholesky(Symmetric(K))
+        return rhs -> F \ rhs
+    end
+
+    Aaug = [
+        K           sparse(R)
+        sparse(R')  spzeros(m, m)
+    ]
+
+    Faug = lu(Aaug)
+
+    function solve(rhs)
+        # sol,_ = krylov_solve(Val(:minres), Aaug, vec(vcat(rhs, zeros(m))), rtol=1e-8)
+        sol = Faug \ vcat(rhs, zeros(m))
+        return sol[1:n]
+    end
+
+    return solve
+end
+
+# function run_stress_concentration(r, m=2)
+    r = 2
+    m=2
+
     println("Running with r = $r")
     mult = floor(Int,m^r)
     N_elem1 = 2 * mult
@@ -201,26 +272,74 @@ function run_stress_concentration(r, m=2)
     # K = [K1_ff spzeros(size(K1_ff, 1), size(K2_ff, 2)) spzeros(size(K1_ff, 1), size(K3_ff, 2));
     #     spzeros(size(K2_ff, 1), size(K1_ff, 2)) K2_ff spzeros(size(K2_ff, 1), size(K3_ff, 2));
     #     spzeros(size(K3_ff, 1), size(K1_ff, 2)) spzeros(size(K3_ff, 1), size(K2_ff, 2)) K3_ff]
-
+    B1 = [D11; spzeros(size(D22, 1), size(D11, 2))]
+    B2 = [-D21; -D22]
+    B3 = [spzeros(size(D11, 1), size(D32, 2)); D32]
+    
     K = blockdiag(K1_ff, K2_ff, K3_ff) 
     b = vec([F1_ff; F2; F3_ff; zeros(size(D, 1), 1)])
     A = [K D'; 
             D 0*sparse(I, size(D, 1), size(D, 1))]
 
-    bb = vec([F1_ff; F2; F3_ff;])
-    bc = zeros(size(D, 1), 1)
-    # print(size(A))
-    # print(rank(A))
-    #  x = A\b
+    R1 = elasticity_rbm_3d(fens1.xyz)
+    R2 = elasticity_rbm_3d(fens2.xyz)
+    R3 = elasticity_rbm_3d(fens3.xyz)
+    R1 = zeros(size(R1, 1)-6,0)
+    print("Made rigid body modes\n")
+    K1_solve = make_floating_solver(K1_ff, R1)
+    K2_solve = make_floating_solver(K2_ff, R2)
+    K3_solve = make_floating_solver(K3_ff, R3)
+    print("Made floating solvers\n")
 
-    @time x,_ = krylov_solve(Val(:minres),A,b, rtol=1e-8)
-    # @time x,y,_ = tricg(A,bb,bc)
-    # return 0
+    g = B1 * K1_solve(F1_ff) + B2 * K2_solve(F2) + B3 * K3_solve(F3_ff)
+    G = hcat(B1* R1, B2*R2, B3*R3)
+    e = vcat(R1'* F1_ff, R2'*F2, R3'*F3_ff)
+    rhs_cond = vcat(g, e)
+    print("Assembled rhs_cond\n")
+    function S_mul(x)
+    return B1 * K1_solve(B1' * x) +
+           B2 * K2_solve(B2' * x) +
+           B3 * K3_solve(B3' * x)
+    end
 
-    scattersysvec!(u1, x[1:nfreedofs(u1)])
-    scattersysvec!(u2, x[nfreedofs(u1)+1:nfreedofs(u1)+nfreedofs(u2)])
-    scattersysvec!(u3, x[nfreedofs(u1)+nfreedofs(u2)+1:nfreedofs(u1)+nfreedofs(u2)+nfreedofs(u3)])
-    # st1 = fieldfromintegpoints(femm1, geom1, u1,:Cauchy, 1)
+    nl = size(B1, 1)
+
+    S = zeros(nl, nl)
+
+    for j in 1:nl
+        ej = zeros(nl)
+        ej[j] = 1.0
+        S[:, j] .= S_mul(ej)
+    end
+
+    print("Assembled S\n")
+    nc = size(G, 2)
+
+    Acond = [
+        sparse(S)    sparse(G)
+        sparse(G')   spzeros(nc, nc)
+    ]
+
+    sol = Acond \ rhs_cond
+    print("Solved for λ and β\n")
+    λ = sol[1:nl]
+    β = sol[nl+1:end]
+    m1 = size(R1, 2)
+m2 = size(R2, 2)
+m3 = size(R3, 2)
+
+β1 = β[1:m1]
+β2 = β[m1+1:m1+m2]
+β3 = β[m1+m2+1:m1+m2+m3]
+u1f = K1_solve(F1_ff - B1' * λ) - R1 * β1
+u2f = K2_solve(F2 - B2' * λ) - R2 * β2
+u3f = K3_solve(F3_ff - B3' * λ) - R3 * β3
+print("Solved for u1, u2, u3\n")
+
+scattersysvec!(u1, u1f)
+scattersysvec!(u2, u2f)
+scattersysvec!(u3, u3f)    
+# st1 = fieldfromintegpoints(femm1, geom1, u1,:Cauchy, 1)
     # st2 = fieldfromintegpoints(femm2, geom2, u2,:Cauchy, 1)
     # st3 = fieldfromintegpoints(femm3, geom3, u3,:Cauchy, 1)
     st1 = elemfieldfromintegpoints(femm1, geom1, u1,:vm, 1)
@@ -229,84 +348,84 @@ function run_stress_concentration(r, m=2)
 
     println("max stress = ", maximum(st2.values))
 
-    # output #########################################################################################
-    filename = basename(@__FILE__)
+    # # output #########################################################################################
+    # filename = basename(@__FILE__)
 
-    # if !isdir(filename)
-    #     mkdir(filename)
-    # else
-    #     for file in readdir(filename)
-    #         rmr(joinpath(filename, file))
+    # # if !isdir(filename)
+    # #     mkdir(filename)
+    # # else
+    # #     for file in readdir(filename)
+    # #         rmr(joinpath(filename, file))
+    # #     end
+    # # end
+    # if isdir("$filename/r$r")
+    #     for file in readdir("$filename/r$r")
+    #         rm(joinpath("$filename/r$r", file))
     #     end
+    # else
+    #     mkdir("$filename/r$r")
     # end
-    if isdir("$filename/r$r")
-        for file in readdir("$filename/r$r")
-            rm(joinpath("$filename/r$r", file))
-        end
-    else
-        mkdir("$filename/r$r")
-    end
 
-    file_left = "$filename/r$r/left.vtk"
-    vtkexportmesh(
-        file_left,
-        fens1, fes1,
-        scalars = [ ("St", st1.values)],
-        vectors = [("Displacement", u1.values)]
-    )
-    file_right = "$filename/r$r/right.vtk"
-    vtkexportmesh(
-        file_right,
-        fens3, fes3,
-        scalars = [ ("St", st3.values)],
-        vectors = [("Displacement", u3.values)]
-    )
-    file_center = "$filename/r$r/center.vtk"
-    vtkexportmesh(
-        file_center,
-        fens2, fes2,
-        scalars = [ ("St", st2.values)],
-        vectors = [("Displacement", u2.values)]
-    )
-    file_li = "$filename/r$r/left_interface.vtk"
-    vtkexportmesh(
-        file_li,
-        fensi1, fesi1
-    )
-    file_ri = "$filename/r$r/right_interface.vtk"
-    vtkexportmesh(
-        file_ri,
-        fensi2, fesi2
-    )
-    return maximum(st2.values)
+    # file_left = "$filename/r$r/left.vtk"
+    # vtkexportmesh(
+    #     file_left,
+    #     fens1, fes1,
+    #     scalars = [ ("St", st1.values)],
+    #     vectors = [("Displacement", u1.values)]
+    # )
+    # file_right = "$filename/r$r/right.vtk"
+    # vtkexportmesh(
+    #     file_right,
+    #     fens3, fes3,
+    #     scalars = [ ("St", st3.values)],
+    #     vectors = [("Displacement", u3.values)]
+    # )
+    # file_center = "$filename/r$r/center.vtk"
+    # vtkexportmesh(
+    #     file_center,
+    #     fens2, fes2,
+    #     scalars = [ ("St", st2.values)],
+    #     vectors = [("Displacement", u2.values)]
+    # )
+    # file_li = "$filename/r$r/left_interface.vtk"
+    # vtkexportmesh(
+    #     file_li,
+    #     fensi1, fesi1
+    # )
+    # file_ri = "$filename/r$r/right_interface.vtk"
+    # vtkexportmesh(
+    #     file_ri,
+    #     fensi2, fesi2
+    # )
+    # return maximum(st2.values)
 
-    # file_11 = "$filename/union_11.vtk"
-    # vtkexportmesh(
-    #     file_11,
-    #     meta11["fens_u"], meta11["fes_u"]
-    # )
-    # file_21 = "$filename/union_21.vtk"
-    # vtkexportmesh(
-    #     file_21,
-    #     meta21["fens_u"], meta21["fes_u"]
-    # )
-    # file_22 = "$filename/union_22.vtk"
-    # vtkexportmesh(
-    #     file_22,
-    #     meta22["fens_u"], meta22["fes_u"]
-    # )
-    # file_32 = "$filename/union_32.vtk"
-    # vtkexportmesh(
-    #     file_32,
-    #     meta32["fens_u"], meta32["fes_u"]
-    # )
+    # # file_11 = "$filename/union_11.vtk"
+    # # vtkexportmesh(
+    # #     file_11,
+    # #     meta11["fens_u"], meta11["fes_u"]
+    # # )
+    # # file_21 = "$filename/union_21.vtk"
+    # # vtkexportmesh(
+    # #     file_21,
+    # #     meta21["fens_u"], meta21["fes_u"]
+    # # )
+    # # file_22 = "$filename/union_22.vtk"
+    # # vtkexportmesh(
+    # #     file_22,
+    # #     meta22["fens_u"], meta22["fes_u"]
+    # # )
+    # # file_32 = "$filename/union_32.vtk"
+    # # vtkexportmesh(
+    # #     file_32,
+    # #     meta32["fens_u"], meta32["fes_u"]
+    # # )
 
-end
-s = []
-for r in 2:2
-    max_stress = run_stress_concentration(r,2)
-    push!(s, max_stress)
-end
+# end
+
+# for r in 1:1
+#     max_stress = run_stress_concentration(r,2)
+#     push!(s, max_stress)
+# end
 # s = s[end-2:end]
 # extrapolated_s = (s[2]^2 - s[3]*s[1])/(2*s[2] - s[1] - s[3])
 # println("extrapolated s = ", extrapolated_s)

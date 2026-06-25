@@ -1,3 +1,4 @@
+# D/d ratio is 2.0. 
 using FinEtools
 using FinEtoolsDeforLinear
 using FinEtoolsDeforLinear.AlgoDeforLinearModule
@@ -220,13 +221,7 @@ function run_stress_concentration(r, m=2;
                      3 * dbc_node3 .- 1])
     D11 = D11[:, setdiff(1:3 * count(fens1), dbc_dofs)]
 
-    # Center subdomain ---------------------------------------------------------
-    # Center counts use the same hmesh as the left/right subdomains.
-    # This removes the previous ad hoc values N2_inc, 5*N2_inc, and 0.75*0.8.
 
-    # Keep the original local fillet construction. Only the vertical placement
-    # changes. With rfillet=0.05, the local top fillet before translation starts
-    # at y=0.25; therefore the top shift below places it at yR1--(yR1+rfillet).
     fens2bb, fes2bb = Q4block(x1 - x0, rfillet, nx_center_short, ny_center_fillet_strip)
     fens2tt, fes2tt = Q4block(x1 - x0, rfillet, nx_center_short, ny_center_fillet_strip)
 
@@ -325,8 +320,7 @@ function run_stress_concentration(r, m=2;
                                         inflate=1e-8))
     right_femm3 = FEMMBase(IntegDomain(right_fes3, trule2d))
 
-    # Balance total x force: left traction is -1e-2 over height 1.0; right face
-    # height is 0.5, hence right traction is +2e-2.
+
     function fi_fun_r(forceout::Vector{T}, XYZ, tangents, feid, qpid) where {T}
         return [2.0e-2, 0.0, 0.0]
     end

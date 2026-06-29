@@ -9,7 +9,7 @@ using Infiltrator
 using Krylov
 using LinearOperators
 
-multfactor = 4
+multfactor = 2
 N_elem1 = 2*multfactor
 N_elem2 = 3*multfactor
 N_elem_i = 2*multfactor
@@ -319,7 +319,7 @@ println("starting condensed solve...")
 # Xcond = A_cond \ bcond
 
 # Or MINRES on explicit sparse matrix
-Xcond, stats = minres(A_cond, bcond; rtol=1e-8, atol=1e-8, itmax=500, verbose=1)
+@time Xcond, stats = minres(A_cond, bcond; rtol=1e-8, atol=1e-8, itmax=500, verbose=1)
 
 println("condensed solve done")
 

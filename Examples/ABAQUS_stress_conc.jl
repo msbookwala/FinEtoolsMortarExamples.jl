@@ -11,7 +11,7 @@ using Krylov
 # function run_stress_concentration(r, m=2)
 #     println("Running with r = $r")
 m=2
- r=1
+r=3
     mult = floor(Int,m^r)
     N_elem1 = 2 * mult
     N_elem2 = 2 * mult
@@ -52,7 +52,7 @@ m=2
 
     # left ####################################################################################
 
-    left_data = import_ABAQUS("Examples/ABAQUS_meshes/sc_left_r1.inp")
+    left_data = import_ABAQUS("Examples/ABAQUS_meshes/l-r$r.inp")
     fens1 = left_data["fens"]
     fes1 = left_data["fesets"][1]
     geom1 = NodalField(fens1.xyz)
@@ -109,7 +109,7 @@ m=2
 
     ## right meshing ##############################################################################
 
-    right_data = import_ABAQUS("Examples/ABAQUS_meshes/sc_righ_r1.inp")
+    right_data = import_ABAQUS("Examples/ABAQUS_meshes/r-r$r.inp")
     fens3 = right_data["fens"]
     fes3 = right_data["fesets"][1]
 
@@ -142,7 +142,7 @@ m=2
 
     # central meshing ################################################################################
 
-    cent_data = import_ABAQUS("Examples/ABAQUS_meshes/sc_cent_r1.inp")
+    cent_data = import_ABAQUS("Examples/ABAQUS_meshes/c-r$r.inp")
     fens2 = cent_data["fens"]
     fes2 = cent_data["fesets"][1]
 
@@ -187,18 +187,21 @@ m=2
     # bc = zeros(size(D, 1), 1)
     # print(size(A))
     # print(rank(A))
-     x = A\b
+    #  x = A\b
 
-    # @time x,_ = krylov_solve(Val(:minres),A,b, rtol=1e-8)
+    @time x,_ = krylov_solve(Val(:minres),A,b, rtol=1e-7,verbose=1)
     scattersysvec!(u1, x[1:nfreedofs(u1)])
     scattersysvec!(u2, x[nfreedofs(u1)+1:nfreedofs(u1)+nfreedofs(u2)])
     scattersysvec!(u3, x[nfreedofs(u1)+nfreedofs(u2)+1:nfreedofs(u1)+nfreedofs(u2)+nfreedofs(u3)])
-    # st1 = fieldfromintegpoints(femm1, geom1, u1,:Cauchy, 1)
-    # st2 = fieldfromintegpoints(femm2, geom2, u2,:Cauchy, 1)
-    # st3 = fieldfromintegpoints(femm3, geom3, u3,:Cauchy, 1)
-    st1 = elemfieldfromintegpoints(femm1, geom1, u1,:vm, 1)
-    st2 = elemfieldfromintegpoints(femm2, geom2, u2,:vm, 1)
-    st3 = elemfieldfromintegpoints(femm3, geom3, u3,:vm, 1)
+    st1 = fieldfromintegpoints(femm1, geom1, u1,:Cauchy, 1)
+    st2 = fieldfromintegpoints(femm2, geom2, u2,:Cauchy, 1)
+    st3 = fieldfromintegpoints(femm3, geom3, u3,:Cauchy, 1)
+    # st1 = elemfieldfromintegpoints(femm1, geom1, u1,:vm, 1)
+    # st2 = elemfieldfromintegpoints(femm2, geom2, u2,:vm, 1)
+    # st3 = elemfieldfromintegpoints(femm3, geom3, u3,:vm, 1)
+    # st1 = elemfieldfromintegpoints(femm1, geom1, u1,:princCauchy, 1)
+    # st2 = elemfieldfromintegpoints(femm2, geom2, u2,:princCauchy, 1)
+    # st3 = elemfieldfromintegpoints(femm3, geom3, u3,:princCauchy, 1)
 
     println("max stress = ", maximum(st2.values))
 

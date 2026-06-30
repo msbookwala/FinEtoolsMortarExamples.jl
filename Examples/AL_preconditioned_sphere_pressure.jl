@@ -9,6 +9,7 @@ using LinearOperators
 using Krylov
 using Infiltrator
 using IncompleteLU: ilu
+using AlgebraicMultigrid
 
 function run_sphere_pressure(multfactor, save_vtk)
     N_elem1 = 2*multfactor
@@ -289,7 +290,10 @@ function run_sphere_pressure(multfactor, save_vtk)
     K = [K1_ff spzeros(n1, n2);
                 spzeros(n2, n1) K2_ff]
     K = K + gamma * (D' * W_ * D)
-    FK = ilu(K, τ=1e-3)
+    # FK = ilu(K, τ=1e-3)
+    ml = smoothed_aggregation(K)
+    Pamg = aspreconditioner(ml)
+    # @infiltrate
 
     function pinv_mortar!(y, x)
         x = mat_r * x
@@ -305,10 +309,11 @@ function run_sphere_pressure(multfactor, save_vtk)
         yλ = @view y[n1+n2+1:n]
 
         
-        # y1 .= cg(Khat1, r1; atol=1e-10, rtol=1e-8, itmax=50, verbose=0)[1]
-        # y2 .= cg(Khat2, r2; atol=1e-10, rtol=1e-8, itmax=5, verbose=0)[1]
+
         # yu .= gmres(K, ru, atol=1e-10, rtol=1e-8, itmax=50, verbose=0)[1]
-        yu .= FK\ru
+        # yu .= FK\ru
+        # yu .= Pamg\ru
+        yu .= cg(K, ru; M = Pamg, ldiv = true, rtol=1e-2, itmax=50, verbose=0)[1]
         yλ .= rλ
 
 
@@ -412,7 +417,7 @@ function run_sphere_pressure(multfactor, save_vtk)
     return total_l2error
 end
 totalerrors =[]
-# for multfactor in [8]
+# for multfactor in [4]
 for multfactor in [16]
 
     println("--------------------------------------------------")

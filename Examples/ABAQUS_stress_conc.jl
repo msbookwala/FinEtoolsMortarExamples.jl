@@ -193,9 +193,9 @@ r=3
     scattersysvec!(u1, x[1:nfreedofs(u1)])
     scattersysvec!(u2, x[nfreedofs(u1)+1:nfreedofs(u1)+nfreedofs(u2)])
     scattersysvec!(u3, x[nfreedofs(u1)+nfreedofs(u2)+1:nfreedofs(u1)+nfreedofs(u2)+nfreedofs(u3)])
-    st1 = fieldfromintegpoints(femm1, geom1, u1,:Cauchy, 1)
-    st2 = fieldfromintegpoints(femm2, geom2, u2,:Cauchy, 1)
-    st3 = fieldfromintegpoints(femm3, geom3, u3,:Cauchy, 1)
+    st1 = elemfieldfromintegpoints(femm1, geom1, u1,:Cauchy, 1)
+    st2 = elemfieldfromintegpoints(femm2, geom2, u2,:Cauchy, 1)
+    st3 = elemfieldfromintegpoints(femm3, geom3, u3,:Cauchy, 1)
     # st1 = elemfieldfromintegpoints(femm1, geom1, u1,:vm, 1)
     # st2 = elemfieldfromintegpoints(femm2, geom2, u2,:vm, 1)
     # st3 = elemfieldfromintegpoints(femm3, geom3, u3,:vm, 1)
@@ -208,13 +208,9 @@ r=3
     # output #########################################################################################
     filename = basename(@__FILE__)
 
-    # if !isdir(filename)
-    #     mkdir(filename)
-    # else
-    #     for file in readdir(filename)
-    #         rmr(joinpath(filename, file))
-    #     end
-    # end
+    if !isdir(filename)
+        mkdir(filename)
+    end
     if isdir("$filename/r$r")
         for file in readdir("$filename/r$r")
             rm(joinpath("$filename/r$r", file))

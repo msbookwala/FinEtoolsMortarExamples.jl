@@ -252,43 +252,69 @@ function run_sphere_pressure(multfactor, save_vtk)
                         # error("dbc_dofs = $dbc_dofs")
     D1 = D1[:,setdiff(1:3*count(fens1), dbc_dofs)]
     # @infiltrate
-    alpha1 = 0
+    alpha1 = 1e-3
     alpha2 = 1e-3
-    Khat1 = K1_ff + alpha1 * sparse(I, nfreedofs(u1), nfreedofs(u1))
-    Khat2 = K2_ff + alpha2 * sparse(I, nfreedofs(u2), nfreedofs(u2))
+    
     femm_i = FEMMDeforLinear(MR, IntegDomain(fesi, trule2d), material)
     geom_i = NodalField(fensi.xyz)
     u_i = NodalField(zeros(size(fensi.xyz)))
     numberdofs!(u_i)
     mass_i = mass(femm_i, geom_i, u_i)
+    W_vec = sum(mass_i, dims=2).^(-2)
+    W_ = spdiagm(vec(W_vec))
+    D = [D1 -D2]
+    # @infiltrate
+
+    
+    # Khat1 = K1_ff + alpha1*D1'*W_*D1
+    # Khat2 = K2_ff + alpha2*D2'*W_*D2  
+
+
+
 
     # F_K1 = cholesky(Khat1)
     # F_K2 = cholesky(Khat2)
     # F_M = cholesky(mass_i) 
-    tau = 1e-3  
-    F_K1 = ilu(Khat1, τ=tau)
-    F_K2 = ilu(Khat2, τ=tau)
-    F_M = ilu(mass_i, τ=tau)
+    gamma = 1
+    # F_K1 = ilu(Khat1, τ=tau)
+    # F_K2 = ilu(Khat2, τ=tau)
+    # F_M = ilu(mass_i, τ=tau)
 
     n1 = size(K1_ff, 1)
     n2 = size(K2_ff, 1)
     n = n1 + n2 + size(D1, 1)
+    # @infiltrate
+    mat_r = [sparse(I,n1+n2,n1+n2) gamma*D'*W_; spzeros(size(D,1), n1+n2)  -gamma*W_ ]
+
+    K = [K1_ff spzeros(n1, n2);
+                spzeros(n2, n1) K2_ff]
+    K = K + gamma * (D' * W_ * D)
+    FK = ilu(K, τ=1e-3)
 
     function pinv_mortar!(y, x)
-        r1 = @view x[1:n1]
-        r2 = @view x[n1+1:n1+n2]
+        x = mat_r * x
+
+        # r1 = @view x[1:n1]
+        ru = @view x[1:n1+n2]
+        # r2 = @view x[n1+1:n1+n2]
         rλ = @view x[n1+n2+1:n]
 
-        y1 = @view y[1:n1]
-        y2 = @view y[n1+1:n1+n2]
+        # y1 = @view y[1:n1]
+        # y2 = @view y[n1+1:n1+n2]
+        yu = @view y[1:n1+n2]
         yλ = @view y[n1+n2+1:n]
-        # y1 .= cg(K1_ff, r1; atol=1e-10, rtol=1e-8, itmax=50, verbose=0)[1]
-        # y2 .= cg(K2_ff, r2;  atol=1e-10, rtol=1e-8, itmax=5, verbose=0)[1]
-        # yλ .= cg(mass_i, rλ; atol=1e-10, rtol=1e-8, itmax=50, verbose=0)[1]
 
-        y1 .= F_K1 \ r1
-        y2 .= F_K2 \ r2
-        yλ .= F_M \ rλ
+        
+        # y1 .= cg(Khat1, r1; atol=1e-10, rtol=1e-8, itmax=50, verbose=0)[1]
+        # y2 .= cg(Khat2, r2; atol=1e-10, rtol=1e-8, itmax=5, verbose=0)[1]
+        # yu .= gmres(K, ru, atol=1e-10, rtol=1e-8, itmax=50, verbose=0)[1]
+        yu .= FK\ru
+        yλ .= rλ
+
+
+        # y1 .= F_K1 \ r1
+        # y2 .= F_K2 \ r2
+        # yλ .= F_M \ rλ
 
         return y
     end
@@ -297,17 +323,23 @@ function run_sphere_pressure(multfactor, save_vtk)
     nT = size(K1_ff, 1) + size(K2_ff, 1)
     nλ = size(D1, 1)
     n  = nT + nλ
-    Pinv = LinearOperator(Float64, n, n, true, true, pinv_mortar!)
+    Pinv = LinearOperator(Float64, n, n, false, false, pinv_mortar!)
+    
 
 
 
-    A = [K1_ff          spzeros(size(K1_ff,1), size(K2_ff,2))    D1';
-        spzeros(size(K2_ff,1), size(K1_ff,2))     K2_ff          -D2';
-        D1               -D2               spzeros(size(D1,1), size(D1,1))]
+    # A = [Khat1          spzeros(size(K1_ff,1), size(K2_ff,2))    D1';
+    #     spzeros(size(K2_ff,1), size(K1_ff,2))     Khat2          -D2';
+    #     D1               -D2               spzeros(size(D1,1), size(D1,1))]
+
+    A = [K D';
+        D spzeros(size(D,1), size(D,1))]
     B = vcat(F1_ff, F2_ff, zeros(size(D1, 1)))
     println("solving iterative system with preconditioner...")
     println("Size of system: $(size(A,1)) x $(size(A,2))")
-    @time X, _ = minres(A, B; M=Pinv, atol=1e-10, rtol=1e-8, itmax=5000, verbose=1)
+
+    # @infiltrate
+    @time X, _ = gmres(A, B; M=Pinv, atol=1e-10, rtol=1e-8, itmax=5000, verbose=1)
     # println("Solving with direct solver...")
     # @time X = A \ B
     println("Done solving")
@@ -381,7 +413,7 @@ function run_sphere_pressure(multfactor, save_vtk)
 end
 totalerrors =[]
 # for multfactor in [8]
-for multfactor in [4]
+for multfactor in [16]
 
     println("--------------------------------------------------")
     println("Running for multifactor = $multfactor")

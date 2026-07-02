@@ -264,23 +264,8 @@ function run_sphere_pressure(multfactor, save_vtk)
     W_vec = sum(mass_i, dims=2).^(-2)
     W_ = spdiagm(vec(W_vec))
     D = [D1 -D2]
-    # @infiltrate
 
-    
-    # Khat1 = K1_ff + alpha1*D1'*W_*D1
-    # Khat2 = K2_ff + alpha2*D2'*W_*D2  
-
-
-
-
-    # F_K1 = cholesky(Khat1)
-    # F_K2 = cholesky(Khat2)
-    # F_M = cholesky(mass_i) 
     gamma = 1
-    # F_K1 = ilu(Khat1, τ=tau)
-    # F_K2 = ilu(Khat2, τ=tau)
-    # F_M = ilu(mass_i, τ=tau)
-
     n1 = size(K1_ff, 1)
     n2 = size(K2_ff, 1)
     n = n1 + n2 + size(D1, 1)
@@ -290,9 +275,10 @@ function run_sphere_pressure(multfactor, save_vtk)
     K = [K1_ff spzeros(n1, n2);
                 spzeros(n2, n1) K2_ff]
     K = K + gamma * (D' * W_ * D)
-    # FK = ilu(K, τ=1e-3)
-    ml = smoothed_aggregation(K)
-    Pamg = aspreconditioner(ml)
+    FK = ilu(K, τ=1e-3)
+    # FK = vec(diag(K))
+    # ml = smoothed_aggregation(K)
+    # Pamg = aspreconditioner(ml)
     # @infiltrate
 
     function pinv_mortar!(y, x)
@@ -311,9 +297,11 @@ function run_sphere_pressure(multfactor, save_vtk)
         
 
         # yu .= gmres(K, ru, atol=1e-10, rtol=1e-8, itmax=50, verbose=0)[1]
-        # yu .= FK\ru
+        yu .= FK\ru
+        # @infiltrate
+        # yu .= ru./FK
         # yu .= Pamg\ru
-        yu .= cg(K, ru; M = Pamg, ldiv = true, rtol=1e-2, itmax=50, verbose=0)[1]
+        # yu .= cg(K, ru; M = Pamg, ldiv = true, rtol=1e-2, itmax=50, verbose=0)[1]
         yλ .= rλ
 
 
@@ -418,7 +406,7 @@ function run_sphere_pressure(multfactor, save_vtk)
 end
 totalerrors =[]
 # for multfactor in [4]
-for multfactor in [16]
+for multfactor in [20]
 
     println("--------------------------------------------------")
     println("Running for multifactor = $multfactor")

@@ -6,7 +6,7 @@ using LinearAlgebra
 using FinEtools.AlgoBaseModule: matrix_blocked, vector_blocked
 using SparseArrays
 
-N_elem1 = 4
+N_elem1 = 4*
 N_elem2 = 3*2
 N_elem_i = 3
 lam_order = 0
@@ -92,7 +92,7 @@ setebc!(u2, dbc_nodes2, 3, 0.0)
 applyebc!(u2)
 numberdofs!(u2)
 
-femm2 = FEMMDeforLinear(MR, IntegDomain(fes2, rule3d), material)
+femm2 = FEMMDeforLinear(MR, IntegDomain(fes2, GaussRule(3, 2)), material)
 K2 = stiffness(femm2, geom2, u2)
 K2_ff = matrix_blocked(K2, nfreedofs(u2), nfreedofs(u2))[:ff]
 K2_fd = matrix_blocked(K2, nfreedofs(u2), nfreedofs(u2))[:fd]
@@ -118,8 +118,8 @@ elseif lam_order==0
 end
 numberdofs!(u_i)
 
-D1, meta1 = common_refinement(fens1, interface_fes1, fens_i, fes_i; lam_order=lam_order, h=0.05, dim_u=3)
-D2, meta2 = common_refinement(fens2, interface_fes2, fens_i, fes_i; lam_order=lam_order, h=0.05, dim_u=3)
+D1, meta1 = common_refinement(fens1, interface_fes1, fens_i, fes_i; lam_order=lam_order, h=0.05, dim_u=3, tri_order=2)
+D2, meta2 = common_refinement(fens2, interface_fes2, fens_i, fes_i; lam_order=lam_order, h=0.05, dim_u=3, tri_order=2)
 dbc_dofs1 = sort([3*dbc_nodes1 .- 2; 3*dbc_nodes1 .- 1;  3*dbc_nodes1])
 dbc_dofs2 = sort([3*dbc_nodes2 .- 2; 3*dbc_nodes2 .- 1;  3*dbc_nodes2])
 

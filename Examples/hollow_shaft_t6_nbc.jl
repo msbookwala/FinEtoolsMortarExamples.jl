@@ -5,14 +5,13 @@ using FinEtools.MeshExportModule
 using LinearAlgebra
 using FinEtools.AlgoBaseModule: matrix_blocked, vector_blocked
 using SparseArrays
-include("NS_solver.jl")
 
 N_elem1 = 4*2
 N_elem2 = 3*2*2
 N_elem_i = 3*2
 lam_order = 0
 
-E = 1000.0
+E = 1.0
 nu = 1/3
 MR = DeforModelRed3D
 material = MatDeforElastIso(MR, 0.0, E, nu, 0.0)
@@ -21,16 +20,6 @@ rule2d = TriRule(3)
 
 exact_u(x) = [0.0 0.0 0.0]
 
-function right_dbc_u(x)
-    # rotate by 10 degrees
-    x_ = x[1] - 0.5
-    y_ = x[2] - 0.5
-    theta = atan(y_, x_)
-    r = sqrt(x_^2 + y_^2)
-    u_rot = r * cos(theta + deg2rad(90)) - r * cos(theta)
-    v_rot = r * sin(theta + deg2rad(90)) - r * sin(theta)
-    return [u_rot, v_rot, 0.0]
-end
 
 # SD1 #########################################################################################################################
 r1 = 0.25
@@ -41,7 +30,7 @@ fens1.xyz[:, 1] .+= 0.5
 fens1.xyz[:, 2] .+= 0.5
 
 boundaryfes1 = meshboundary(fes1)
-interface_fes1 = subset(boundaryfes1, selectelem(fens1, boundaryfes1, box=[0.25 ,0.75, 0.25, 0.75, 0, l1], inflate=1e-8))
+interface_fes1 = subset(boundaryfes1, selectelem(fens1, boundaryfes1, box=[0.25 ,0.75, 0.25, 0.75, 0+1e-6, l1-1e-6], inflate=1e-8))
 
 geom1 = NodalField(fens1.xyz)
 u1 = NodalField(zeros(size(fens1.xyz, 1), 3))
@@ -81,6 +70,15 @@ end
 fi_top = ForceIntensity(Float64, 3, topfunc)
 F1 = distribloads(topfemm, geom1, u1, fi_top, 2)
 
+botsurf = subset(boundaryfes1, selectelem(fens1, boundaryfes1, box=[0., 1, 0., 1., 0.0, 0.0], inflate=1e-8))
+botfemm = FEMMBase(IntegDomain(botsurf, rule2d))
+function botfunc(forceout::Vector{T}, XYZ, tangents, feid, qpid) where {T}
+    x = 0.0625.*[(XYZ[2]-0.5), -XYZ[1]+0.5,  0.0]
+    return x
+end
+
+fi_bot = ForceIntensity(Float64, 3, botfunc)
+# F1 += distribloads(botfemm, geom1, u1, fi_bot, 2)
 
 femm1 = FEMMDeforLinear(MR, IntegDomain(fes1, rule3d), material)
 K1 = stiffness(femm1, geom1, u1)
@@ -99,7 +97,7 @@ fens2.xyz[:, 2] .+= 0.5
 
 
 boundaryfes2 = meshboundary(fes2)
-interface_fes2 = subset(boundaryfes2, selectelem(fens2, boundaryfes2, box=[0.25, 0.75, 0.25, 0.75, 0.0, l1], inflate=1e-8))
+interface_fes2 = subset(boundaryfes2, selectelem(fens2, boundaryfes2, box=[0.25, 0.75, 0.25, 0.75, 0.0+ 1e-6, 0.5- 1e-6], inflate=1e-8))
 
 geom2 = NodalField(fens2.xyz)
 u2 = NodalField(zeros(size(fens2.xyz, 1), 3))
@@ -111,11 +109,17 @@ u2 = NodalField(zeros(size(fens2.xyz, 1), 3))
 applyebc!(u2)
 numberdofs!(u2)
 
-femm2 = FEMMDeforLinear(MR, IntegDomain(fes2, rule3d), material)
+femm2 = FEMMDeforLinear(MR, IntegDomain(fes2, GaussRule(3, 3)), material)
 K2 = stiffness(femm2, geom2, u2)
 K2_ff = matrix_blocked(K2, nfreedofs(u2), nfreedofs(u2))[:ff]
 K2_fd = matrix_blocked(K2, nfreedofs(u2), nfreedofs(u2))[:fd]
 F2 = zeros(size(K2, 1))
+
+botsurf2 = subset(boundaryfes2, selectelem(fens2, boundaryfes2, box=[0., 1, 0., 1., 0.0, 0.0], inflate=1e-8))
+botfemm2 = FEMMBase(IntegDomain(botsurf2, GaussRule(2,2)))
+
+fi_bot2 = ForceIntensity(Float64, 3, botfunc)
+# F2 += distribloads(botfemm2, geom2, u2, fi_bot2, 2)
 F2_ff = vector_blocked(F2, nfreedofs(u2))[:f] - K2_fd * gathersysvec(u2, :d)
 
 # sekeleton ###############################################################################################################
@@ -140,8 +144,8 @@ elseif lam_order==0
 end
 numberdofs!(u_i)
 
-D1, meta1 = common_refinement(fens1, interface_fes1, fens_i, fes_i; lam_order=lam_order, h=0.05, dim_u=3)
-D2, meta2 = common_refinement(fens2, interface_fes2, fens_i, fes_i; lam_order=lam_order, h=0.05, dim_u=3)
+D1, meta1 = common_refinement(fens1, interface_fes1, fens_i, fes_i; lam_order=lam_order, h=0.05, dim_u=3, tri_order=2)
+D2, meta2 = common_refinement(fens2, interface_fes2, fens_i, fes_i; lam_order=lam_order, h=0.05, dim_u=3, tri_order=2)
 
 # dbc_dofs1 = sort([3*dbc_nodes1 .- 2; 3*dbc_nodes1 .- 1;  3*dbc_nodes1])
 # dbc_dofs2 = sort([3*dbc_nodes2 .- 2; 3*dbc_nodes2 .- 1;  3*dbc_nodes2])
@@ -154,10 +158,13 @@ A = [K1_ff          spzeros(size(K1_ff,1), size(K2_ff,2))    D1';
      spzeros(size(K2_ff,1), size(K1_ff,2))     K2_ff          -D2';
      D1               -D2               spzeros(size(D1,1), size(D1,1))]
 B = vcat(F1_ff, F2_ff, f_lams)
-# X = A \ B
+X = A \ B
 scattersysvec!(u1, X[1:size(K1_ff,1)])
 scattersysvec!(u2, X[size(K1_ff,1)+1 : size(K1_ff,1)+size(K2_ff,1)])
 scattersysvec!(u_i, X[size(K1_ff,1)+size(K2_ff,1)+1 : end])
+
+s1 = elemfieldfromintegpoints(femm1, geom1, u1,:vm, 1)
+s2 = elemfieldfromintegpoints(femm2, geom2, u2,:vm, 1)
 
 # # export results
 err1 = L2error(femm1, geom1, u1, exact_u)
@@ -174,20 +181,21 @@ File1 = "$filename/mesh_left.vtk"
 vtkexportmesh(
     File1,
     fens1, fes1,
-    # calars = [ ("Err", err1.values)],
+    scalars = [ ("Stress", s1.values)],
      vectors = [("Displacement", u1.values)]
+
 )
 File2 = "$filename/mesh_right.vtk"
 vtkexportmesh(
     File2,
     fens2, fes2,
-    # scalars = [ ("Err", err2.values)],
+    scalars = [ ("Stress", s2.values)],
      vectors = [("Displacement", u2.values)]
 )
 File_skel = "$filename/mesh_skeleton.vtk"
 vtkexportmesh(
     File_skel,
-    fens_i, fes_i,scalars = [],
+    fens_i, fes_i,
     vectors = [("LagrangeMultiplier", u_i.values)]
 )
 

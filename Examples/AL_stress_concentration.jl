@@ -6,24 +6,25 @@ using LinearAlgebra
 using FinEtools.AlgoBaseModule: matrix_blocked, vector_blocked
 using SparseArrays
 using Krylov
+include("AL_solver.jl")
 
 
 # function run_stress_concentration(r, m=2)
 #     println("Running with r = $r")
 m=2
-r=3
+r=2
     mult = floor(Int,m^r)
     N_elem1 = 2 * mult
     N_elem2 = 2 * mult
     N_elem3 = 2 * mult
     N_elem_i = 2 * mult
-    lam_order = 0
+    lam_order = 1
     depth = 0.3
 
     E = 1.0
     nu = 1/3
     MR = DeforModelRed3D
-    material = MatDeforElastIso(MR, 0.0, E, nu, 0.0)
+    material = MatDeforElastIso(MR, 1.0, E, nu, 0.0)
     trule3d = TetRule(4)
     trule2d = TriRule(3)
     grule3d = GaussRule(3, 4)
@@ -140,6 +141,12 @@ r=3
 
     D32,_ = common_refinement(fens3, ifes32, fensi2, fesi2; lam_order=lam_order, h=0.05, dim_u=3, tri_order=2)
 
+    femm_i1 = FEMMDeforLinear(MR, IntegDomain(fesi1, grule2d), material)
+    u_i1 = NodalField(zeros(size(fensi1.xyz, 1), 3))
+    numberdofs!(u_i1)
+    geom_i1 = NodalField(fensi1.xyz)
+    mass_i1 = mass(femm_i1, geom_i1, u_i1)
+
     # central meshing ################################################################################
 
     cent_data = import_ABAQUS("Examples/ABAQUS_meshes/c-r$r.inp")
@@ -152,7 +159,7 @@ r=3
     numberdofs!(u2)
     K2 = stiffness(femm2, geom2, u2)
     K2_ff = matrix_blocked(K2, nfreedofs(u2), nfreedofs(u2))[:ff]
-    F2 = zeros((nfreedofs(u2),1))
+    F2 = zeros((nfreedofs(u2)))
 
 
     mb2  = meshboundary(fes2)
@@ -167,21 +174,42 @@ r=3
     ifes22 = subset(mb2, selectelem(fens2, mb2, box=[0.65, 0.65, 0.0, 1.0, 0., 1.], inflate=1e-7))
     D22,_ = common_refinement(fens2, ifes22, fensi2, fesi2; lam_order=lam_order, h=0.05, dim_u=3, tri_order=2)
 
+    femm_i2 = FEMMDeforLinear(MR, IntegDomain(fesi2, grule2d), material)
+    u_i2 = NodalField(zeros(size(fensi2.xyz, 1), 3))
+    geom_i2 = NodalField(fensi2.xyz)
+    numberdofs!(u_i2)
+    mass_i2 = mass(femm_i2, geom_i2, u_i2)
 
 
 
     # assembly and results ######################################################################################
 
-    D = [D11 -D21 spzeros(size(D11,1),size(D32,2));
-        spzeros(size(D22,1),size(D11,2)) -D22 D32;]
-    # K = [K1_ff spzeros(size(K1_ff, 1), size(K2_ff, 2)) spzeros(size(K1_ff, 1), size(K3_ff, 2));
-    #     spzeros(size(K2_ff, 1), size(K1_ff, 2)) K2_ff spzeros(size(K2_ff, 1), size(K3_ff, 2));
-    #     spzeros(size(K3_ff, 1), size(K1_ff, 2)) spzeros(size(K3_ff, 1), size(K2_ff, 2)) K3_ff]
+    us, lambdas, X, stats = AL_solve(
+    [K1_ff, K2_ff, K3_ff],
+    [F1_ff, F2, F3_ff],
+    [
+        [(1, +1.0, D11), (2, -1.0, D21)],
+        [(2, +1.0, D22), (3, -1.0, D32)]
+    ],
+    [mass_i1, mass_i2];
+    gamma=1.0,
+    tau=1e-3
+    )
+    scattersysvec!(u1, us[1])
+    scattersysvec!(u2, us[2])
+    scattersysvec!(u3, us[3])
 
-    K = blockdiag(K1_ff, K2_ff, K3_ff) 
-    b = vec([F1_ff; F2; F3_ff; zeros(size(D, 1), 1)])
-    A = [K D'; 
-            D 0*sparse(I, size(D, 1), size(D, 1))]
+
+    # D = [D11 -D21 spzeros(size(D11,1),size(D32,2));
+    #     spzeros(size(D22,1),size(D11,2)) -D22 D32;]
+    # # K = [K1_ff spzeros(size(K1_ff, 1), size(K2_ff, 2)) spzeros(size(K1_ff, 1), size(K3_ff, 2));
+    # #     spzeros(size(K2_ff, 1), size(K1_ff, 2)) K2_ff spzeros(size(K2_ff, 1), size(K3_ff, 2));
+    # #     spzeros(size(K3_ff, 1), size(K1_ff, 2)) spzeros(size(K3_ff, 1), size(K2_ff, 2)) K3_ff]
+
+    # K = blockdiag(K1_ff, K2_ff, K3_ff) 
+    # b = vec([F1_ff; F2; F3_ff; zeros(size(D, 1), 1)])
+    # A = [K D'; 
+    #         D 0*sparse(I, size(D, 1), size(D, 1))]
 
     # bb = vec([F1_ff; F2; F3_ff;])
     # bc = zeros(size(D, 1), 1)
@@ -189,10 +217,10 @@ r=3
     # print(rank(A))
     #  x = A\b
 
-    @time x,_ = krylov_solve(Val(:minres),A,b, rtol=1e-7,verbose=1)
-    scattersysvec!(u1, x[1:nfreedofs(u1)])
-    scattersysvec!(u2, x[nfreedofs(u1)+1:nfreedofs(u1)+nfreedofs(u2)])
-    scattersysvec!(u3, x[nfreedofs(u1)+nfreedofs(u2)+1:nfreedofs(u1)+nfreedofs(u2)+nfreedofs(u3)])
+    # @time x,_ = krylov_solve(Val(:minres),A,b, rtol=1e-7,verbose=1)
+    # scattersysvec!(u1, x[1:nfreedofs(u1)])
+    # scattersysvec!(u2, x[nfreedofs(u1)+1:nfreedofs(u1)+nfreedofs(u2)])
+    # scattersysvec!(u3, x[nfreedofs(u1)+nfreedofs(u2)+1:nfreedofs(u1)+nfreedofs(u2)+nfreedofs(u3)])
     st1 = elemfieldfromintegpoints(femm1, geom1, u1,:Cauchy, 1)
     st2 = elemfieldfromintegpoints(femm2, geom2, u2,:Cauchy, 1)
     st3 = elemfieldfromintegpoints(femm3, geom3, u3,:Cauchy, 1)

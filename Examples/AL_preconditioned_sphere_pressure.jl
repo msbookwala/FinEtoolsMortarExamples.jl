@@ -10,7 +10,7 @@ using Krylov
 using Infiltrator
 using IncompleteLU: ilu
 using AlgebraicMultigrid
-
+include("AL_solver.jl")
 function run_sphere_pressure(multfactor, save_vtk)
     N_elem1 = 2*multfactor
     N_elem2 = 3*multfactor
@@ -261,84 +261,95 @@ function run_sphere_pressure(multfactor, save_vtk)
     u_i = NodalField(zeros(size(fensi.xyz)))
     numberdofs!(u_i)
     mass_i = mass(femm_i, geom_i, u_i)
-    W_vec = sum(mass_i, dims=2).^(-2)
-    W_ = spdiagm(vec(W_vec))
-    D = [D1 -D2]
+    # W_vec = sum(mass_i, dims=2).^(-2)
+    # W_ = spdiagm(vec(W_vec))
+    # D = [D1 -D2]
 
-    gamma = 1
-    n1 = size(K1_ff, 1)
-    n2 = size(K2_ff, 1)
-    n = n1 + n2 + size(D1, 1)
-    # @infiltrate
-    mat_r = [sparse(I,n1+n2,n1+n2) gamma*D'*W_; spzeros(size(D,1), n1+n2)  -gamma*W_ ]
+    # gamma = 1
+    # n1 = size(K1_ff, 1)
+    # n2 = size(K2_ff, 1)
+    # n = n1 + n2 + size(D1, 1)
+    # # @infiltrate
+    # mat_r = [sparse(I,n1+n2,n1+n2) gamma*D'*W_; spzeros(size(D,1), n1+n2)  -gamma*W_ ]
 
-    K = [K1_ff spzeros(n1, n2);
-                spzeros(n2, n1) K2_ff]
-    K = K + gamma * (D' * W_ * D)
-    FK = ilu(K, τ=1e-3)
-    # FK = vec(diag(K))
-    # ml = smoothed_aggregation(K)
-    # Pamg = aspreconditioner(ml)
-    # @infiltrate
+    # K = [K1_ff spzeros(n1, n2);
+    #             spzeros(n2, n1) K2_ff]
+    # K = K + gamma * (D' * W_ * D)
+    # FK = ilu(K, τ=1e-3)
+    # # FK = vec(diag(K))
+    # # ml = smoothed_aggregation(K)
+    # # Pamg = aspreconditioner(ml)
+    # # @infiltrate
 
-    function pinv_mortar!(y, x)
-        x = mat_r * x
+    # function pinv_mortar!(y, x)
+    #     x = mat_r * x
 
-        # r1 = @view x[1:n1]
-        ru = @view x[1:n1+n2]
-        # r2 = @view x[n1+1:n1+n2]
-        rλ = @view x[n1+n2+1:n]
+    #     # r1 = @view x[1:n1]
+    #     ru = @view x[1:n1+n2]
+    #     # r2 = @view x[n1+1:n1+n2]
+    #     rλ = @view x[n1+n2+1:n]
 
-        # y1 = @view y[1:n1]
-        # y2 = @view y[n1+1:n1+n2]
-        yu = @view y[1:n1+n2]
-        yλ = @view y[n1+n2+1:n]
+    #     # y1 = @view y[1:n1]
+    #     # y2 = @view y[n1+1:n1+n2]
+    #     yu = @view y[1:n1+n2]
+    #     yλ = @view y[n1+n2+1:n]
 
         
 
-        # yu .= gmres(K, ru, atol=1e-10, rtol=1e-8, itmax=50, verbose=0)[1]
-        yu .= FK\ru
-        # @infiltrate
-        # yu .= ru./FK
-        # yu .= Pamg\ru
-        # yu .= cg(K, ru; M = Pamg, ldiv = true, rtol=1e-2, itmax=50, verbose=0)[1]
-        yλ .= rλ
+    #     # yu .= gmres(K, ru, atol=1e-10, rtol=1e-8, itmax=50, verbose=0)[1]
+    #     yu .= FK\ru
+    #     # @infiltrate
+    #     # yu .= ru./FK
+    #     # yu .= Pamg\ru
+    #     # yu .= cg(K, ru; M = Pamg, ldiv = true, rtol=1e-2, itmax=50, verbose=0)[1]
+    #     yλ .= rλ
 
 
-        # y1 .= F_K1 \ r1
-        # y2 .= F_K2 \ r2
-        # yλ .= F_M \ rλ
+    #     # y1 .= F_K1 \ r1
+    #     # y2 .= F_K2 \ r2
+    #     # yλ .= F_M \ rλ
 
-        return y
-    end
+    #     return y
+    # end
 
 
-    nT = size(K1_ff, 1) + size(K2_ff, 1)
-    nλ = size(D1, 1)
-    n  = nT + nλ
-    Pinv = LinearOperator(Float64, n, n, false, false, pinv_mortar!)
+    # nT = size(K1_ff, 1) + size(K2_ff, 1)
+    # nλ = size(D1, 1)
+    # n  = nT + nλ
+    # Pinv = LinearOperator(Float64, n, n, false, false, pinv_mortar!)
     
 
 
 
-    # A = [Khat1          spzeros(size(K1_ff,1), size(K2_ff,2))    D1';
-    #     spzeros(size(K2_ff,1), size(K1_ff,2))     Khat2          -D2';
-    #     D1               -D2               spzeros(size(D1,1), size(D1,1))]
+    # # A = [Khat1          spzeros(size(K1_ff,1), size(K2_ff,2))    D1';
+    # #     spzeros(size(K2_ff,1), size(K1_ff,2))     Khat2          -D2';
+    # #     D1               -D2               spzeros(size(D1,1), size(D1,1))]
 
-    A = [K D';
-        D spzeros(size(D,1), size(D,1))]
-    B = vcat(F1_ff, F2_ff, zeros(size(D1, 1)))
-    println("solving iterative system with preconditioner...")
-    println("Size of system: $(size(A,1)) x $(size(A,2))")
+    # A = [K D';
+    #     D spzeros(size(D,1), size(D,1))]
+    # B = vcat(F1_ff, F2_ff, zeros(size(D1, 1)))
+
+    us, lambdas, X, stats = AL_solve(
+    [K1_ff, K2_ff],
+    [F1_ff, F2_ff],
+    [
+        [(1, +1.0, D1), (2, -1.0, D2)]
+    ],
+    [mass_i];
+    gamma=1.0,
+    tau=1e-3
+    )
+
 
     # @infiltrate
-    @time X, _ = gmres(A, B; M=Pinv, atol=1e-10, rtol=1e-8, itmax=5000, verbose=1)
+    # @time X, _ = gmres(A, B; M=Pinv, atol=1e-10, rtol=1e-8, itmax=5000, verbose=1)
     # println("Solving with direct solver...")
     # @time X = A \ B
     println("Done solving")
-
-    scattersysvec!(u1, X[1:size(K1_ff,1)])
-    scattersysvec!(u2, X[size(K1_ff,1)+1 : size(K1_ff,1)+size(K2_ff,1)])
+    scattersysvec!(u1, us[1])
+    scattersysvec!(u2, us[2])
+    # scattersysvec!(u1, X[1:size(K1_ff,1)])
+    # scattersysvec!(u2, X[size(K1_ff,1)+1 : size(K1_ff,1)+size(K2_ff,1)])
     # scattersysvec!(u_i, X[size(K1_ff,1)+size(K2_ff,1)+1 : end])
     st1 = elemfieldfromintegpoints(femm1, geom1, u1,:Cauchy, 1:6)
     st2 = elemfieldfromintegpoints(femm2, geom2, u2,:Cauchy, 1:6)
@@ -405,8 +416,8 @@ function run_sphere_pressure(multfactor, save_vtk)
     return total_l2error
 end
 totalerrors =[]
-# for multfactor in [4]
-for multfactor in [20]
+for multfactor in [4]
+# for multfactor in [20]
 
     println("--------------------------------------------------")
     println("Running for multifactor = $multfactor")

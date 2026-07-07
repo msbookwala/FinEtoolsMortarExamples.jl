@@ -11,7 +11,7 @@ using Krylov
 # function run_stress_concentration(r, m=2)
 #     println("Running with r = $r")
 m=2
-r=3
+r=2
     mult = floor(Int,m^r)
     N_elem1 = 2 * mult
     N_elem2 = 2 * mult

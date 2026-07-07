@@ -12,7 +12,7 @@ include("AL_solver.jl")
 # function run_stress_concentration(r, m=2)
 #     println("Running with r = $r")
 m=2
-r=2
+r=3
     mult = floor(Int,m^r)
     N_elem1 = 2 * mult
     N_elem2 = 2 * mult
@@ -31,25 +31,25 @@ r=2
     grule2d = GaussRule(2, 3)
 
     # interface left ####################################################################################
-    fensi1_b, fesi1_b = T3block(0.15,0.3, N_elem_i, N_elem_i)
-    fensi1_b.xyz = hcat(fensi1_b.xyz[:, 1].+0.15, 0.3*ones(size(fensi1_b.xyz, 1)), fensi1_b.xyz[:, 2])
+    # fensi1_b, fesi1_b = T3block(0.15,0.3, N_elem_i, N_elem_i)
+    # fensi1_b.xyz = hcat(fensi1_b.xyz[:, 1].+0.15, 0.3*ones(size(fensi1_b.xyz, 1)), fensi1_b.xyz[:, 2])
 
-    fensi1_t, fesi1_t = T3block(0.15,0.3, N_elem_i, N_elem_i)
-    fensi1_t.xyz = hcat(fensi1_t.xyz[:, 1].+0.15, 0.7*ones(size(fensi1_t.xyz, 1)), fensi1_t.xyz[:, 2])
+    # fensi1_t, fesi1_t = T3block(0.15,0.3, N_elem_i, N_elem_i)
+    # fensi1_t.xyz = hcat(fensi1_t.xyz[:, 1].+0.15, 0.7*ones(size(fensi1_t.xyz, 1)), fensi1_t.xyz[:, 2])
 
-    fensi1_c, fesi1_c = T3block(0.3,0.4, N_elem_i, N_elem_i)
-    fensi1_c.xyz = hcat(0.15*ones(size(fensi1_c.xyz, 1)), fensi1_c.xyz[:, 2].+0.3, fensi1_c.xyz[:, 1])
+    # fensi1_c, fesi1_c = T3block(0.3,0.4, N_elem_i, N_elem_i)
+    # fensi1_c.xyz = hcat(0.15*ones(size(fensi1_c.xyz, 1)), fensi1_c.xyz[:, 2].+0.3, fensi1_c.xyz[:, 1])
 
-    fensi1, fesi1out = mergenmeshes(Tuple{FENodeSet, AbstractFESet}[
-                                                                    (fensi1_b, fesi1_b),
-                                                                    (fensi1_t, fesi1_t),
-                                                                    (fensi1_c, fesi1_c),
-                                                                    ], 1e-8)
+    # fensi1, fesi1out = mergenmeshes(Tuple{FENodeSet, AbstractFESet}[
+    #                                                                 (fensi1_b, fesi1_b),
+    #                                                                 (fensi1_t, fesi1_t),
+    #                                                                 (fensi1_c, fesi1_c),
+    #                                                                 ], 1e-8)
 
-    fesi1 = FESetT3(vcat(connasarray.(fesi1out)...))
-    # interface right ####################################################################################
-    fensi2, fesi2 = T3block(0.3,0.2, N_elem_i, N_elem_i)
-    fensi2.xyz = hcat(0.4*ones(size(fensi2.xyz, 1)), fensi2.xyz[:, 2].+0.4, fensi2.xyz[:, 1])
+    # fesi1 = FESetT3(vcat(connasarray.(fesi1out)...))
+    # # interface right ####################################################################################
+    # fensi2, fesi2 = T3block(0.3,0.2, N_elem_i, N_elem_i)
+    # fensi2.xyz = hcat(0.4*ones(size(fensi2.xyz, 1)), fensi2.xyz[:, 2].+0.4, fensi2.xyz[:, 1])
 
     # left ####################################################################################
 
@@ -193,7 +193,7 @@ r=2
     ],
     [mass_i1, mass_i2];
     gamma=1.0,
-    tau=1e-3
+    tau=1e-5
     )
     scattersysvec!(u1, us[1])
     scattersysvec!(u2, us[2])

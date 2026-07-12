@@ -11,23 +11,25 @@ using Infiltrator
 using IncompleteLU: ilu
 using AlgebraicMultigrid
 include("AL_solver.jl")
-function run_sphere_pressure(multfactor, save_vtk)
-    N_elem1 = 2*multfactor
-    N_elem2 = 3*multfactor
+function run_sphere_pressure(multfactor, save_vtk, lam_order=0)
+    N_elem1 = 4*multfactor
+    N_elem2 = 2*multfactor
     N_elem_i = 2*multfactor
-    lam_order = 1
+    lam_order = lam_order
 
     ri = 1.0
     rmid = 2.0
     ro = 3.0
     p=1
 
+
+
     E = 1.0
     nu = 1/3
     MR = DeforModelRed3D
     material = MatDeforElastIso(MR, 1.0, E, nu, 0.0)
     trule3d = TetRule(4)
-    trule2d = TriRule(3)
+    trule2d = TriRule(4)
     grule3d = GaussRule(3, 3)
     grule2d = GaussRule(2, 3)
 
@@ -112,8 +114,8 @@ function run_sphere_pressure(multfactor, save_vtk)
 
         # Radial extrusion from inner radius r to outer radius r2.
         function radial_extrusion(x, k)
-            p = r + (r2 - r) * k / nLayers
-            return vec(x) .* (p / norm(vec(x)))
+            rho = r + (r2 - r) * k / nLayers
+            return vec(x) .* (rho / norm(vec(x)))
         end
 
         # Extrude Q4 surface mesh into H8 solid shell mesh
@@ -137,8 +139,8 @@ function run_sphere_pressure(multfactor, save_vtk)
 
         # Radial extrusion from inner radius r to outer radius r2.
         function radial_extrusion(x, k)
-            p = r + (r2 - r) * k / nLayers
-            return vec(x) .* (p / norm(vec(x)))
+            rho = r + (r2 - r) * k / nLayers
+            return vec(x) .* (rho / norm(vec(x)))
         end
 
         # Extrude Q4 surface mesh into H8 solid shell mesh
@@ -154,10 +156,6 @@ function run_sphere_pressure(multfactor, save_vtk)
     rule = grule3d
     rule2d = grule2d
 
-    # fens1,fes1 = T4hollowsphere(ri, rmid, N_elem1, 4)
-    # fens2,fes2 = T4hollowsphere(rmid, ro, N_elem2, 4)
-    # rule = trule3d
-    # rule2d = trule2d
 
 
     fensi, fesi = Q4sphere(rmid, N_elem_i)
@@ -258,96 +256,32 @@ function run_sphere_pressure(multfactor, save_vtk)
     
     femm_i = FEMMDeforLinear(MR, IntegDomain(fesi, trule2d), material)
     geom_i = NodalField(fensi.xyz)
-    u_i = NodalField(zeros(size(fensi.xyz)))
-    numberdofs!(u_i)
-    mass_i = mass(femm_i, geom_i, u_i)
-    # W_vec = sum(mass_i, dims=2).^(-2)
-    # W_ = spdiagm(vec(W_vec))
-    # D = [D1 -D2]
+    if lam_order==1
+        u_i  = NodalField(zeros(size(fensi.xyz, 1), 3))
+        numberdofs!(u_i)
+        mass_i = mass(femm_i, geom_i, u_i)
+    else
+        u_i = ElementalField(zeros(size(fesi.conn, 1), 3))
+        numberdofs!(u_i)
+        # mass_i = mass(femm_i, geom_i, u_i)
+    end
 
-    # gamma = 1
-    # n1 = size(K1_ff, 1)
-    # n2 = size(K2_ff, 1)
-    # n = n1 + n2 + size(D1, 1)
-    # # @infiltrate
-    # mat_r = [sparse(I,n1+n2,n1+n2) gamma*D'*W_; spzeros(size(D,1), n1+n2)  -gamma*W_ ]
-
-    # K = [K1_ff spzeros(n1, n2);
-    #             spzeros(n2, n1) K2_ff]
-    # K = K + gamma * (D' * W_ * D)
-    # FK = ilu(K, τ=1e-3)
-    # # FK = vec(diag(K))
-    # # ml = smoothed_aggregation(K)
-    # # Pamg = aspreconditioner(ml)
-    # # @infiltrate
-
-    # function pinv_mortar!(y, x)
-    #     x = mat_r * x
-
-    #     # r1 = @view x[1:n1]
-    #     ru = @view x[1:n1+n2]
-    #     # r2 = @view x[n1+1:n1+n2]
-    #     rλ = @view x[n1+n2+1:n]
-
-    #     # y1 = @view y[1:n1]
-    #     # y2 = @view y[n1+1:n1+n2]
-    #     yu = @view y[1:n1+n2]
-    #     yλ = @view y[n1+n2+1:n]
-
-        
-
-    #     # yu .= gmres(K, ru, atol=1e-10, rtol=1e-8, itmax=50, verbose=0)[1]
-    #     yu .= FK\ru
-    #     # @infiltrate
-    #     # yu .= ru./FK
-    #     # yu .= Pamg\ru
-    #     # yu .= cg(K, ru; M = Pamg, ldiv = true, rtol=1e-2, itmax=50, verbose=0)[1]
-    #     yλ .= rλ
-
-
-    #     # y1 .= F_K1 \ r1
-    #     # y2 .= F_K2 \ r2
-    #     # yλ .= F_M \ rλ
-
-    #     return y
-    # end
-
-
-    # nT = size(K1_ff, 1) + size(K2_ff, 1)
-    # nλ = size(D1, 1)
-    # n  = nT + nλ
-    # Pinv = LinearOperator(Float64, n, n, false, false, pinv_mortar!)
-    
-
-
-
-    # # A = [Khat1          spzeros(size(K1_ff,1), size(K2_ff,2))    D1';
-    # #     spzeros(size(K2_ff,1), size(K1_ff,2))     Khat2          -D2';
-    # #     D1               -D2               spzeros(size(D1,1), size(D1,1))]
-
-    # A = [K D';
-    #     D spzeros(size(D,1), size(D,1))]
-    # B = vcat(F1_ff, F2_ff, zeros(size(D1, 1)))
 
     us, lambdas, X, stats = AL_solve(
-    [K1_ff, K2_ff],
-    [F1_ff, F2_ff],
-    [
-        [(1, +1.0, D1), (2, -1.0, D2)]
-    ],
-    [mass_i];
-    gamma=1.0,
-    tau=1e-3
-    )
+                                        [K1_ff, K2_ff],
+                                        [F1_ff, F2_ff],
+                                        [
+                                            [(1, +1.0, D1), (2, -1.0, D2)]
+                                        ],
+                                        [mass_i];
+                                        gamma=1.0,
+                                        tau=1e-3
+                                    )
 
-
-    # @infiltrate
-    # @time X, _ = gmres(A, B; M=Pinv, atol=1e-10, rtol=1e-8, itmax=5000, verbose=1)
-    # println("Solving with direct solver...")
-    # @time X = A \ B
     println("Done solving")
     scattersysvec!(u1, us[1])
     scattersysvec!(u2, us[2])
+    scattersysvec!(u_i, lambdas[1])
     # scattersysvec!(u1, X[1:size(K1_ff,1)])
     # scattersysvec!(u2, X[size(K1_ff,1)+1 : size(K1_ff,1)+size(K2_ff,1)])
     # scattersysvec!(u_i, X[size(K1_ff,1)+size(K2_ff,1)+1 : end])
@@ -395,7 +329,7 @@ function run_sphere_pressure(multfactor, save_vtk)
         vtkexportmesh(fn2, fens2, fes2, vectors = [("Disp", u2.values)], scalars = [#("Cauchy", st2.values), 
                                                                                 ("Pressure", p2.values), 
                                                                                 ("p_error", p2error.values)])
-        vtkexportmesh(fn3, fensi, fesi)
+        vtkexportmesh(fn3, fensi, fesi, vectors = [("LM", u_i.values)])
 
         ufn1 = "$filename/inner_u.vtk"
         ufn2 = "$filename/outer_u.vtk"
@@ -415,17 +349,85 @@ function run_sphere_pressure(multfactor, save_vtk)
     println("Total L2 error in pressure: $total_l2error")
     return total_l2error
 end
-totalerrors =[]
-for multfactor in [4]
-# for multfactor in [20]
+totalerrors_p0 =[]
+totalerrors_p1 =[]
+for multfactor in [2,4,8,16]
+# for multfactor in [4]
+# 
+    # println("--------------------------------------------------")
+    # println("LM P0: Running for multifactor = $multfactor")
+    # println("--------------------------------------------------")
+    # total_l2error = run_sphere_pressure(multfactor, false, 0)
+    # push!(totalerrors_p0, total_l2error)
+    # println("====================================================")
 
     println("--------------------------------------------------")
-    println("Running for multifactor = $multfactor")
+    println("LM P1: Running for multifactor = $multfactor")
     println("--------------------------------------------------")
-    total_l2error = run_sphere_pressure(multfactor, false)
-    push!(totalerrors, total_l2error)
+    total_l2error = run_sphere_pressure(multfactor, false, 1)
+    push!(totalerrors_p1, total_l2error)
     println("====================================================")
 end
 #plot 
+
+# ###################################
+# totalerrors_p1 =  [ 0.07726662404708322
+#  0.02085454487634048
+#  0.005322994037182681
+#  0.0013376024408891865]
+# ##################################
+
+
 # using Plots
-# plot([2, 4, 8, 16], totalerrors, xlabel="Multifactor", ylabel="Total L2 Error", title="Convergence of Pressure Error", xscale=:log10, yscale=:log10, marker=:o, legend=false)
+# using LaTeXStrings
+# default(
+#     fontfamily = "Computer Modern",
+#     linewidth = 2.5,
+#     markersize = 6,
+#     framestyle = :box,
+#     grid = true,
+#     minorgrid = true,
+#     legendfontsize = 10,
+#     tickfontsize = 10,
+#     guidefontsize = 12,
+#     titlefontsize = 12,
+#     dpi = 300,
+# )
+# function loglog_slope(h, err)
+#     p = sortperm(h)
+#     x = log.(h[p])
+#     y = log.(err[p])
+
+#     A = hcat(ones(length(x)), x)
+#     c = A \ y
+
+#     return c[2]
+# end
+
+# function sorted_xy(h, err)
+#     p = sortperm(h)
+#     return h[p], err[p]
+# end
+# h = 2*pi./[2, 4, 8, 16]
+
+# plt1 = plot(
+#     xlabel = L"\mathrm{Element \; size }\; h",
+#     ylabel = L"L^2\ \mathrm{Error}",
+#     title = "Error Convergence ",
+#     xscale = :log10,
+#     yscale = :log10,
+#     legend = :topright,
+#     xflip = true
+# )
+# h1, e1 = sorted_xy(h, totalerrors_p1)
+# slope1 = loglog_slope(h1, totalerrors_p1)
+
+# plot!(
+#     plt1,
+#     h1,
+#     e1,
+#     marker = :circle,
+#     label = "Error, slope = $(round(-slope1, digits=2))",
+# )
+# savefig(plt1, "convergence_pressure_error.pdf")
+# display(plt1)

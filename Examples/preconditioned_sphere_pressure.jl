@@ -111,8 +111,8 @@ function run_sphere_pressure(multfactor, save_vtk)
 
         # Radial extrusion from inner radius r to outer radius r2.
         function radial_extrusion(x, k)
-            p = r + (r2 - r) * k / nLayers
-            return vec(x) .* (p / norm(vec(x)))
+            rho = r + (r2 - r) * k / nLayers
+            return vec(x) .* (rho / norm(vec(x)))
         end
 
         # Extrude Q4 surface mesh into H8 solid shell mesh
@@ -136,8 +136,8 @@ function run_sphere_pressure(multfactor, save_vtk)
 
         # Radial extrusion from inner radius r to outer radius r2.
         function radial_extrusion(x, k)
-            p = r + (r2 - r) * k / nLayers
-            return vec(x) .* (p / norm(vec(x)))
+            rho = r + (r2 - r) * k / nLayers
+            return vec(x) .* (rho / norm(vec(x)))
         end
 
         # Extrude Q4 surface mesh into H8 solid shell mesh

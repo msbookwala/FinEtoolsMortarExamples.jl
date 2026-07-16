@@ -304,7 +304,7 @@ function run_hollow_shaft(mult=1, savevtk=false)
 
 end
 SE_vector = Float64[]
-for mult in [1, 2, 4]
+for mult in [1, 2, 4, 8, 16]
     println("Running hollow shaft example with mult = $mult")
     SE = run_hollow_shaft(mult, true)
     println("SE = $SE")

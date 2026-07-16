@@ -26,6 +26,7 @@ function run_hollow_shaft(mult=1, savevtk=false)
 
     xc = 0.5
     yc = 0.5
+    print("Building meshes...\n")
 
     function radial_out(x)
         dx = x[1] - xc
@@ -95,6 +96,7 @@ function run_hollow_shaft(mult=1, savevtk=false)
     # @infiltrate
 
     # SD1 #########################################################################################################################
+    ta = time()
     r1 = 0.25
     l1 = 1.0
     fens1, fes1 = T4cylindern(r1, l1, N_elem1, N_elem1*4)
@@ -166,14 +168,16 @@ function run_hollow_shaft(mult=1, savevtk=false)
     K1_ff = matrix_blocked(K1, nfreedofs(u1), nfreedofs(u1))[:ff]
     K1_fd = matrix_blocked(K1, nfreedofs(u1), nfreedofs(u1))[:fd]
     F1_ff = vector_blocked(F1, nfreedofs(u1))[:f] - K1_fd * gathersysvec(u1, :d)
+    print("Time to build SD1: $(time() - ta) seconds\n")
     # SD2 #########################################################################################################################
+    tb = time()
     r2 = 0.25
     l2 = 0.5
     fens2_, fes2_ = Q4annulus(0.25, 0.5, N_elem2, N_elem2*3, 2*pi)
+    fens2_, fes2_ = mergenodes(fens2_, fes2_, 1e-8)
     nelem2_h = N_elem2
 
     fens2, fes2 = H8extrudeQ4(fens2_, fes2_, nelem2_h, (x, k) -> [x[1], x[2], k * l2 / nelem2_h])
-    fens2, fes2 = mergenodes(fens2, fes2, 1e-8)
     fens2.xyz[:, 1] .+=0.5
     fens2.xyz[:, 2] .+= 0.5
     fens2.xyz[:, 3] .+= 0.25
@@ -205,6 +209,7 @@ function run_hollow_shaft(mult=1, savevtk=false)
     fi_bot2 = ForceIntensity(Float64, 3, botfunc)
     # F2 += distribloads(botfemm2, geom2, u2, fi_bot2, 2)
     F2_ff = vector_blocked(F2, nfreedofs(u2))[:f] - K2_fd * gathersysvec(u2, :d)
+    print("Time to build SD2: $(time() - tb) seconds\n")
 
     # sekeleton ###############################################################################################################
     # fens_i, fes_i = T3circleseg(2*pi, r2, N_elem_i*6, N_elem_i)
@@ -231,8 +236,7 @@ function run_hollow_shaft(mult=1, savevtk=false)
     numberdofs!(u_i)
     mass_i = mass(femm_i, geom_i, u_i)
 
-    numberdofs!(u_i)
-
+    print("Building coupling operators...\n")
     D1, meta1 = common_refinement(fens1, interface_fes1, fens_i, fes_i; lam_order=lam_order, h=0.05, dim_u=3, tri_order=2)
     D2, meta2 = common_refinement(fens2, interface_fes2, fens_i, fes_i; lam_order=lam_order, h=0.05, dim_u=3, tri_order=2)
 
@@ -304,7 +308,7 @@ function run_hollow_shaft(mult=1, savevtk=false)
 
 end
 SE_vector = Float64[]
-for mult in [1, 2, 4, 8, 16]
+for mult in [1,2,4,8,16]
     println("Running hollow shaft example with mult = $mult")
     SE = run_hollow_shaft(mult, true)
     println("SE = $SE")

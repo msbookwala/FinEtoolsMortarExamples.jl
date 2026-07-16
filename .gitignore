@@ -2,3 +2,10 @@
 *.vtu
 *.png
 *.pdf
+Examples/ABAQUS_meshes/c-r45.inp
+.gitignore
+Examples/ABAQUS_meshes/r-r45.inp
+Manifest.toml
+.gitignore
+Examples/ABAQUS_meshes/l-r45.inp
+Manifest.toml

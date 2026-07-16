@@ -114,8 +114,8 @@ function run_sphere_pressure(multfactor, save_vtk, lam_order=0)
 
         # Radial extrusion from inner radius r to outer radius r2.
         function radial_extrusion(x, k)
-            rho = r + (r2 - r) * k / nLayers
-            return vec(x) .* (rho / norm(vec(x)))
+            p = r + (r2 - r) * k / nLayers
+            return vec(x) .* (p / norm(vec(x)))
         end
 
         # Extrude Q4 surface mesh into H8 solid shell mesh
@@ -139,8 +139,8 @@ function run_sphere_pressure(multfactor, save_vtk, lam_order=0)
 
         # Radial extrusion from inner radius r to outer radius r2.
         function radial_extrusion(x, k)
-            rho = r + (r2 - r) * k / nLayers
-            return vec(x) .* (rho / norm(vec(x)))
+            p = r + (r2 - r) * k / nLayers
+            return vec(x) .* (p / norm(vec(x)))
         end
 
         # Extrude Q4 surface mesh into H8 solid shell mesh
@@ -351,9 +351,9 @@ function run_sphere_pressure(multfactor, save_vtk, lam_order=0)
 end
 totalerrors_p0 =[]
 totalerrors_p1 =[]
-for multfactor in [2,4,8,16]
-# for multfactor in [4]
-# 
+# for multfactor in [2,4,8,16]
+for multfactor in [2]
+
     # println("--------------------------------------------------")
     # println("LM P0: Running for multifactor = $multfactor")
     # println("--------------------------------------------------")
@@ -364,70 +364,70 @@ for multfactor in [2,4,8,16]
     println("--------------------------------------------------")
     println("LM P1: Running for multifactor = $multfactor")
     println("--------------------------------------------------")
-    total_l2error = run_sphere_pressure(multfactor, false, 1)
+    total_l2error = run_sphere_pressure(multfactor, true, 1)
     push!(totalerrors_p1, total_l2error)
     println("====================================================")
 end
 #plot 
 
-# ###################################
-# totalerrors_p1 =  [ 0.07726662404708322
-#  0.02085454487634048
-#  0.005322994037182681
-#  0.0013376024408891865]
-# ##################################
+###################################
+totalerrors_p1 =  [0.2317998721412416
+ 0.06256363462902798
+ 0.015968982111564535
+ 0.004012807323371885]
+##################################
 
 
-# using Plots
-# using LaTeXStrings
-# default(
-#     fontfamily = "Computer Modern",
-#     linewidth = 2.5,
-#     markersize = 6,
-#     framestyle = :box,
-#     grid = true,
-#     minorgrid = true,
-#     legendfontsize = 10,
-#     tickfontsize = 10,
-#     guidefontsize = 12,
-#     titlefontsize = 12,
-#     dpi = 300,
-# )
-# function loglog_slope(h, err)
-#     p = sortperm(h)
-#     x = log.(h[p])
-#     y = log.(err[p])
+using Plots
+using LaTeXStrings
+default(
+    fontfamily = "Computer Modern",
+    linewidth = 2.5,
+    markersize = 6,
+    framestyle = :box,
+    grid = true,
+    minorgrid = true,
+    legendfontsize = 10,
+    tickfontsize = 10,
+    guidefontsize = 12,
+    titlefontsize = 12,
+    dpi = 300,
+)
+function loglog_slope(h, err)
+    p = sortperm(h)
+    x = log.(h[p])
+    y = log.(err[p])
 
-#     A = hcat(ones(length(x)), x)
-#     c = A \ y
+    A = hcat(ones(length(x)), x)
+    c = A \ y
 
-#     return c[2]
-# end
+    return c[2]
+end
 
-# function sorted_xy(h, err)
-#     p = sortperm(h)
-#     return h[p], err[p]
-# end
-# h = 2*pi./[2, 4, 8, 16]
+function sorted_xy(h, err)
+    p = sortperm(h)
+    return h[p], err[p]
+end
+h = 2*pi./[2, 4, 8, 16]
 
-# plt1 = plot(
-#     xlabel = L"\mathrm{Element \; size }\; h",
-#     ylabel = L"L^2\ \mathrm{Error}",
-#     title = "Error Convergence ",
-#     xscale = :log10,
-#     yscale = :log10,
-#     legend = :topright,
-#     xflip = true
-# )
-# h1, e1 = sorted_xy(h, totalerrors_p1)
-# slope1 = loglog_slope(h1, totalerrors_p1)
+plt1 = plot(
+    xlabel = L"\mathrm{Element \; size }\; h",
+    ylabel = L"L^2\ \mathrm{Error}",
+    title = "Error Convergence ",
+    xscale = :log10,
+    yscale = :log10,
+    legend = :topright,
+    xflip = true
+)
+h1, e1 = sorted_xy(h, totalerrors_p1)
+slope1 = loglog_slope(h1, totalerrors_p1)
 
-# plot!(
-#     plt1,
-#     h1,
-#     e1,
-#     marker = :circle,
-#     label = "Error, slope = $(round(-slope1, digits=2))",
-# )
-# savefig(plt1, "convergence_pressure_error.pdf")
-# display(plt1)
+plot!(
+    plt1,
+    h1,
+    e1,
+    marker = :circle,
+    label = "Error, slope = $(round(-slope1, digits=2))",
+)
+savefig(plt1, "convergence_pressure_error.pdf")
+display(plt1)

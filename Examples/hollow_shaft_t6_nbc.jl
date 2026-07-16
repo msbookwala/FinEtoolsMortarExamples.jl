@@ -13,12 +13,22 @@ function run_hollow_shaft(mult=1, savevtk=false)
     N_elem2 = 8*mult
     lam_order = 1
     N_elemi = 8*mult
+    
+    N1r = 2*mult
+    N1z = 8*mult
+
+    N2c = 31*mult
+    N2r = 5*mult
+    N2z = 10*mult
+
+    Nic = 16*mult
+    Niz = 4*mult
 
     E = 1.0
     nu = 1/3
     MR = DeforModelRed3D
     material1 = MatDeforElastIso(MR, 1.0, E, nu, 0.0)
-    material2 = MatDeforElastIso(MR, 1.0, E, nu, 0.0)
+    material2 = MatDeforElastIso(MR, 1.0, 5*E, nu, 0.0)
     rule3d = TetRule(4)
     rule2d = TriRule(3)
 
@@ -79,27 +89,25 @@ function run_hollow_shaft(mult=1, savevtk=false)
 
         return FENodeSet(xyz), FESetL2(conn)
     end
-    fens_ii, fes_ii = L2circle(0.25, N_elemi, center=(0.5, 0.5), z=0.0, orientation=:ccw)
+    fens_ii, fes_ii = L2circle(0.25, Nic, center=(0.5, 0.5), z=0.0, orientation=:ccw)
     len = 0.5
-    n_axial = 4*mult
     fens_i, fes_i = Q4extrudeL2(
             fens_ii,
             fes_ii,
-            n_axial,
+            Niz,
             (x, k) -> [
                 x[1],
                 x[2],
-                k * len / n_axial,
+                k * len / Niz,
             ],
         )
     fens_i.xyz[:, 3] .+= 0.25
-    # @infiltrate
 
     # SD1 #########################################################################################################################
     ta = time()
     r1 = 0.25
     l1 = 1.0
-    fens1, fes1 = T4cylindern(r1, l1, N_elem1, N_elem1*4)
+    fens1, fes1 = T4cylindern(r1, l1, N1r, N1z)
 
     fens1.xyz[:, 1] .+= 0.5
     fens1.xyz[:, 2] .+= 0.5
@@ -109,16 +117,11 @@ function run_hollow_shaft(mult=1, savevtk=false)
     function notz(x)
         return [x[1], x[2], 0]
     end
-    # interface_fes1_i = subset(boundaryfes1, selectelem(fens1, boundaryfes1, facing =true, direction =notz, tolerance=0.1))
-    # interface_fes1 = subset(interface_fes1_i, selectelem(fens1, interface_fes1_i, box=[0.25 ,0.75, 0.25, 0.75, 0, l1], inflate=1e-8))
-
     interface_fes1_i = subset(boundaryfes1, selectelem(fens1, boundaryfes1, facing =true, direction = radial_out, tolerance=0.1))
     interface_fes1 = subset(interface_fes1_i, selectelem(fens1, interface_fes1_i, box=[0.25 ,0.75, 0.25, 0.75, 0.25, 0.75], inflate=1e-8))
 
     geom1 = NodalField(fens1.xyz)
     u1 = NodalField(zeros(size(fens1.xyz, 1), 3))
-
-
 
     dbc_node1 = selectnode(fens1, box=[0.5,0.5,0.5,0.5,0.5,0.5], inflate=1e-8)
     setebc!(u1, dbc_node1, 1, 0.0)
@@ -168,31 +171,51 @@ function run_hollow_shaft(mult=1, savevtk=false)
     K1_ff = matrix_blocked(K1, nfreedofs(u1), nfreedofs(u1))[:ff]
     K1_fd = matrix_blocked(K1, nfreedofs(u1), nfreedofs(u1))[:fd]
     F1_ff = vector_blocked(F1, nfreedofs(u1))[:f] - K1_fd * gathersysvec(u1, :d)
-    print("Time to build SD1: $(time() - ta) seconds\n")
+    # print("Time to build SD1: $(time() - ta) seconds\n")
     # SD2 #########################################################################################################################
     tb = time()
     r2 = 0.25
     l2 = 0.5
-    fens2_, fes2_ = Q4annulus(0.25, 0.5, N_elem2, N_elem2*3, 2*pi)
-    fens2_, fes2_ = mergenodes(fens2_, fes2_, 1e-8)
-    nelem2_h = N_elem2
 
-    fens2, fes2 = H8extrudeQ4(fens2_, fes2_, nelem2_h, (x, k) -> [x[1], x[2], k * l2 / nelem2_h])
-    fens2.xyz[:, 1] .+=0.5
-    fens2.xyz[:, 2] .+= 0.5
+    fens2_l2, fes2_l2 = L2circle(r2, N2c; center=(0.5, 0.5),z=0.0, orientation=:cw)
+    extrusionh = function (x, k)
+        dx = x[1] - xc
+        dy = x[2] - yc
+
+        r = hypot(dx, dy)
+        r > eps(Float64) ||
+            error("A circle node coincides with the extrusion center.")
+
+        # Radial distance added at layer k
+        dr = k * 0.25 / N2r
+
+        scale = (r + dr) / r
+
+        if length(x) == 2
+            return [
+                xc + scale * dx,
+                yc + scale * dy,
+            ]
+        else
+            return [
+                xc + scale * dx,
+                yc + scale * dy,
+                x[3],
+            ]
+        end
+    end
+    
+    fens2_q4, fes2_q4 = Q4extrudeL2(fens2_l2, fes2_l2, N2r, extrusionh)
+    fens2, fes2 = H8extrudeQ4(fens2_q4, fes2_q4, N2z, (x, k) -> [x[1], x[2], k * l2 / N2z])
+
     fens2.xyz[:, 3] .+= 0.25
 
-    boundaryfes2 = meshboundary(fes2)
-    # interface_fes2 = subset(boundaryfes2, selectelem(fens2, boundaryfes2, box=[0.25, 0.75, 0.25, 0.75, 0.0, 0.5], inflate=1e-8))
-    # @infiltrate
+    boundaryfes2 = meshboundary(fes2)    
     interface_fes2 = subset(boundaryfes2, selectelem(fens2, boundaryfes2, facing =true, direction =radial_in, tolerance=0.1)) # intermediate facing z
-    # interface_fes2 = subset(interface_fes2_i, selectelem(fens2, interface_fes2_i, box=[0.25, 0.75, 0.25, 0.75, 0.0, 0.5], inflate=1e-8))
+
     geom2 = NodalField(fens2.xyz)
     u2 = NodalField(zeros(size(fens2.xyz, 1), 3))
-    # dbc_nodes2 = selectnode(fens2, box=[0.0, 1.0, 0.0, 1.0, 0.0, 0.0], inflate=1e-8)
-    # setebc!(u2, dbc_nodes2, 1, 0.0)
-    # setebc!(u2, dbc_nodes2, 2, 0.0)
-    # setebc!(u2, dbc_nodes2, 3, 0.0)
+
 
     applyebc!(u2)
     numberdofs!(u2)
@@ -209,22 +232,10 @@ function run_hollow_shaft(mult=1, savevtk=false)
     fi_bot2 = ForceIntensity(Float64, 3, botfunc)
     # F2 += distribloads(botfemm2, geom2, u2, fi_bot2, 2)
     F2_ff = vector_blocked(F2, nfreedofs(u2))[:f] - K2_fd * gathersysvec(u2, :d)
-    print("Time to build SD2: $(time() - tb) seconds\n")
+    # print("Time to build SD2: $(time() - tb) seconds\n")
 
     # sekeleton ###############################################################################################################
-    # fens_i, fes_i = T3circleseg(2*pi, r2, N_elem_i*6, N_elem_i)
-    # fens_i.xyz[:, 1] .+= r1
-    # fens_i.xyz[:, 2] .+= r1
-    # # append z coordinate column
-    # fens_i.xyz = hcat(fens_i.xyz, l1*ones(size(fens_i.xyz, 1)))
 
-
-
-    # fes_i = deepcopy(interface_fes1)
-    # fens_i = deepcopy(fens1)
-    # connected = findunconnnodes(fens_i, fes_i)
-    # fens_i, newnumbering = compactnodes(fens_i, connected)
-    # fes_i = renumberconn!(fes_i, newnumbering)
 
     if lam_order==1
         u_i  = NodalField(zeros(size(fens_i.xyz, 1), 3))
@@ -232,10 +243,10 @@ function run_hollow_shaft(mult=1, savevtk=false)
         u_i  = ElementalField(zeros(size(fes_i.conn, 1), 3))
     end
     geom_i = NodalField(fens_i.xyz)
-    femm_i = FEMMDeforLinear(MR, IntegDomain(fes_i, TriRule(4)), material1)
+    femm_i = FEMMDeforLinear(MR, IntegDomain(fes_i, GaussRule(2,2)), material1)
     numberdofs!(u_i)
     mass_i = mass(femm_i, geom_i, u_i)
-
+    
     print("Building coupling operators...\n")
     D1, meta1 = common_refinement(fens1, interface_fes1, fens_i, fes_i; lam_order=lam_order, h=0.05, dim_u=3, tri_order=2)
     D2, meta2 = common_refinement(fens2, interface_fes2, fens_i, fes_i; lam_order=lam_order, h=0.05, dim_u=3, tri_order=2)
@@ -250,6 +261,8 @@ function run_hollow_shaft(mult=1, savevtk=false)
     #      D1               -D2               spzeros(size(D1,1), size(D1,1))]
     # B = vcat(F1_ff, F2_ff, f_lams)
     # X = A \ B
+    # print("size(A) = $(size(A))\n")
+    # print("RankA = $(rank(A))\n")
 
     us, lambdas, X, stats = AL_solve(
                                         [K1_ff, K2_ff],
@@ -271,8 +284,8 @@ function run_hollow_shaft(mult=1, savevtk=false)
 
     if savevtk
         # # export results
-        err1 = L2error(femm1, geom1, u1, exact_u)
-        err2 = L2error(femm2, geom2, u2, exact_u)
+        # err1 = L2error(femm1, geom1, u1, exact_u)
+        # err2 = L2error(femm2, geom2, u2, exact_u)
         filename = basename(@__FILE__)
         if !isdir(filename)
             mkdir(filename)
@@ -302,15 +315,25 @@ function run_hollow_shaft(mult=1, savevtk=false)
             fens_i, fes_i,
             vectors = [("LagrangeMultiplier", u_i.values)]
         )
+        # Fileu1 = "$filename/union_left.vtk"
+        # vtkexportmesh(
+        #     Fileu1,
+        #     meta1["fens_u"], meta1["fes_u"],scalars = []
+        # )
+        # Fileu2 = "$filename/union_right.vtk"
+        # vtkexportmesh(
+        #     Fileu2,
+        #     meta2["fens_u"], meta2["fes_u"],scalars = []
+        # )
     end
     SE = (us[1]' * K1_ff * us[1] + us[2]' * K2_ff * us[2])/2
     return SE
 
 end
 SE_vector = Float64[]
-for mult in [1,2,4,8,16]
+for mult in [1,2,4.8,16]
     println("Running hollow shaft example with mult = $mult")
-    SE = run_hollow_shaft(mult, true)
+    SE = run_hollow_shaft(mult, false)
     println("SE = $SE")
     push!(SE_vector, SE)
 end

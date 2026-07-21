@@ -4,7 +4,7 @@ using FinEtoolsHeatDiff
 using FinEtoolsHeatDiff.AlgoHeatDiffModule
 using FinEtools.MeshExportModule.VTK: vtkexportmesh, T3, vtkexportvectors
 using LinearAlgebra
-
+using Infiltrator
 
 
 N_elem1 = 5
@@ -70,7 +70,7 @@ fens2.xyz[:, 1] .+= bend * (1.0 .-fens2.xyz[:, 1]).*(fens2.xyz[:, 2] .- 0.5).^2
 
 geom2 = NodalField(fens2.xyz)
 T2 = NodalField(zeros(size(fens2.xyz, 1), 1)) # displacement field
-
+@infiltrate
 box2 = [1.0,1.0,0.0,0.0,0.0,0.0]
 dbc_nodes2 = selectnode(fens2; box=box2, inflate=1e-8)
 for i in dbc_nodes2

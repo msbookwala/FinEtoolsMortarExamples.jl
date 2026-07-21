@@ -1,3 +1,4 @@
+# force applied on both top and bottom of both shafts
 using FinEtools
 using FinEtoolsDeforLinear
 using FinEtoolsDeforLinear.AlgoDeforLinearModule

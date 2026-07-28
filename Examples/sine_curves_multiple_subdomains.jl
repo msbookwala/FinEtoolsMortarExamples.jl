@@ -278,7 +278,7 @@ function run_curved_mult_sd(r =0 ,save_vtk = true)
     end
     Gs = f_lams
     # X,_ = cg(A, b)
-    X = A\b
+    # X = A\b
     us, lambdas, X, stats = AL_solve(
         K_ff_list,
         F_ff_list,

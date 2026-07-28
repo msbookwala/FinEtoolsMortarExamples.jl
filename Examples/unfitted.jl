@@ -6,10 +6,10 @@ using FinEtools.MeshExportModule.VTK: vtkexportmesh, T3, vtkexportvectors
 using LinearAlgebra
 using FinEtoolsDeforLinear
 using FinEtoolsDeforLinear.AlgoDeforLinearModule
-
+using Infiltrator
 
 N_elem1 = 6
-N_elem2 = 4
+N_elem2 = 5
 N_elem_i = 4
 left_m = "t"
 right_m = "t"
@@ -128,16 +128,16 @@ function pfun_r(forceout::Vector{T}, XYZ, tangents, feid, qpid) where {T}
         return Float64[0.0, 0.0, 0.0]
     end
 end
-fi2 = ForceIntensity(Float64, 3, pfun_r)
-F2 = distribloads(el2femm, geom2, u2, fi2, 2)
+fi2 = ForceIntensity(Float64[t0, 0.0, 0.0])
+F2 = distribloads(el2femm, geom2, u2, fi2, 2) ##########HERE#############
 # error("")
 
 l2_right = selectelem(fens2, meshboundary(fes2), box = [1.0,1.0, 0.0,1.0, 0.0, 1.0], inflate=1e-8)
 el2femm_right = FEMMBase(IntegDomain(subset(meshboundary(fes2), l2_right), TriRule(3)))
 fi2_right = ForceIntensity(Float64[-t0, 0.0, 0.0])
 F2 += distribloads(el2femm_right, geom2, u2, fi2_right, 2) 
-
 F2_ff = vector_blocked(F2, nfreedofs(u2))[:f]
+
 ##########################################################################################
 
 xs_i = 0.5
@@ -165,6 +165,15 @@ numberdofs!(u_i)
 
 D1, meta1 = common_refinement(fens1, edge_fes1, fens_i, fes_i; lam_order=lam_order, h=0.03, dim_u=3, tri_order=2)
 D2, meta2 = common_refinement(fens2, edge_fes2, fens_i, fes_i; lam_order=lam_order, h=0.033, dim_u=3, tri_order=2)
+
+free_dofs2 = setdiff(1:(3 * count(fens2)), dbc_dofs2)
+D2_ff = D2[:, free_dofs2]
+
+mu_plus = zeros(size(D2_ff, 1))
+mu_plus[1:3:end] .= t0
+
+F2_ff .-= transpose(D2_ff) * mu_plus
+# @infiltrate
 
 dbc_dofs2 = sort([
         3*dbc_nodes2_1 .- 2;  # ux

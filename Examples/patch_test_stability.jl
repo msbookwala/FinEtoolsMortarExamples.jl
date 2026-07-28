@@ -351,6 +351,8 @@ refinement_levels = 0:3
 
 results = Vector{Any}(undef, length(refinement_levels))
 
+# results = [0.013013871706163716, 0.0039098556589754994, 0.0024448978657151373, 0.0024081304407439596, 0.0024081201552358404 ]
+
 for (k, r) in enumerate(refinement_levels)
     println()
     println("--------------------------------------------------")

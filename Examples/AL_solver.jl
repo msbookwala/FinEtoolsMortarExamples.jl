@@ -96,6 +96,7 @@ function AL_solve(Ks, Fs, Ds, Ms, Gs=nothing;
         K D'
         D spzeros(nlam, nlam)
     ]
+    # error("rank A = $(rank(A))\n size A = $(size(A))\n rank K = $(rank(K))\n size K = $(size(K))\n")
 
     Fhat = F + gamma * D' * Winv * G
     B = vcat(Fhat, G)
@@ -214,3 +215,58 @@ function AL_solve_cg(Ks, Fs, Ds, Ms, Gs=nothing;
     return us, lambdas, X, stats
 end
 
+function p0_mass(fens, fes; dim_u=1)
+    X = fens.xyz
+    conn = stack(fes.conn, dims=1)
+
+    nel, nne = size(conn)
+    areas = zeros(Float64, nel)
+
+    if nne == 3
+        # T3 surface elements
+        for e in 1:nel
+            x1 = vec(X[conn[e, 1], :])
+            x2 = vec(X[conn[e, 2], :])
+            x3 = vec(X[conn[e, 3], :])
+
+            areas[e] = 0.5 * norm(cross(x2 - x1, x3 - x1))
+        end
+
+    elseif nne == 4
+        # Possibly warped Q4 surface elements: 2x2 Gauss integration
+        gp = (-1 / sqrt(3), 1 / sqrt(3))
+
+        for e in 1:nel
+            xe = X[conn[e, :], :]
+
+            for xi in gp, η in gp
+                dN_dxi = 0.25 .* [
+                    -(1 - η),
+                     (1 - η),
+                     (1 + η),
+                    -(1 + η),
+                ]
+
+                dN_deta = 0.25 .* [
+                    -(1 - xi),
+                    -(1 + xi),
+                     (1 + xi),
+                     (1 - xi),
+                ]
+
+                dx_dxi = vec(transpose(xe) * dN_dxi)
+                dx_deta = vec(transpose(xe) * dN_deta)
+
+                areas[e] += norm(cross(dx_dxi, dx_deta))
+            end
+        end
+
+    else
+        error("p0_mass supports only T3 and Q4 surface elements.")
+    end
+
+    any(areas .<= 0.0) && error("Zero or negative surface-element area detected.")
+    diagonal = repeat(areas, inner=dim_u)
+
+    return spdiagm(0 => diagonal)
+end

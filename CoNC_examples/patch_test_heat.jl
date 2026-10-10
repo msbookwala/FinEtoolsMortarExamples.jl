@@ -355,7 +355,9 @@ err1 = L2error(femm1, geom1, T1, sol)
 err2 = L2error(femm2, geom2, T2, sol)
 
 # OUTPUT
+
 filename = basename(@__FILE__)
+filename = "results/" * filename[1:end-3]
 
 if !isdir(filename)
     mkdir(filename)

@@ -212,9 +212,9 @@ function run_patch_test(N_elem1, N_elem2, n_clusters)
     G = sparse(D * Dt)
     Gfac = cholesky(Symmetric(G))
 
-    nλ = size(D, 1)
-    qproj = zeros(Float64, nλ)
-    alphaproj = zeros(Float64, nλ)
+    n_lam = size(D, 1)
+    qproj = zeros(Float64, n_lam)
+    alphaproj = zeros(Float64, n_lam)
 
     function project_constraint!(y, x)
         mul!(qproj, D, x)

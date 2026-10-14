@@ -10,3 +10,4 @@ Manifest.toml
 .gitignore
 Examples/ABAQUS_meshes/l-r45.inp
 Manifest.toml
+Manifest*.toml
